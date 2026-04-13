@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DocuGenious</AssemblyName>
+    <RootNamespace>DocuGenious</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- JIRA integration -->
+    <PackageReference Include="Atlassian.SDK" Version="13.0.0" />
+
+    <!-- Git repository integration -->
+    <PackageReference Include="LibGit2Sharp" Version="0.30.0" />
+
+    <!-- Groq integration via OpenAI-compatible .NET SDK -->
+    <PackageReference Include="OpenAI" Version="2.1.0" />
+
+    <!-- PDF generation -->
+    <PackageReference Include="QuestPDF" Version="2024.10.2" />
+
+    <!-- Rich CLI interface -->
+    <PackageReference Include="Spectre.Console" Version="0.49.1" />
+
+    <!-- Configuration & DI -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

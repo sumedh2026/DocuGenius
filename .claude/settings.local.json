@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet script:*)",
+      "Read(//c/Users/SumedhSudhirAdkar/.nuget/packages/atlassian.sdk/**)",
+      "Bash(powershell -Command \"[Reflection.Assembly]::LoadFile\\('$\\(pwd\\)/lib/netstandard2.0/Atlassian.Jira.dll'\\) | Out-Null; [Atlassian.Jira.Issue].GetProperties\\(\\) | Select-Object Name | Sort-Object Name\")",
+      "Bash(powershell -Command \"[Reflection.Assembly]::LoadFile\\('C:\\\\\\\\Users\\\\\\\\SumedhSudhirAdkar\\\\\\\\.nuget\\\\\\\\packages\\\\\\\\atlassian.sdk\\\\\\\\13.0.0\\\\\\\\lib\\\\\\\\netstandard2.0\\\\\\\\Atlassian.Jira.dll'\\) | Out-Null; [Atlassian.Jira.Issue].GetProperties\\(\\) | Select-Object -ExpandProperty Name | Sort-Object\")"
+    ]
+  }
+}
