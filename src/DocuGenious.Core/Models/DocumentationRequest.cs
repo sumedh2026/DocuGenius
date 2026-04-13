@@ -10,6 +10,7 @@ public class DocumentationRequest
     public string? GitBranch { get; set; }
     public DocumentationType DocumentationType { get; set; }
     public string OutputFileName { get; set; } = string.Empty;
+    public string? AdditionalContext { get; set; }
     public bool IncludeCodeSnippets { get; set; } = true;
     public bool IncludeArchitectureDiagram { get; set; } = false;
     public int MaxFilesToAnalyze { get; set; } = 50;

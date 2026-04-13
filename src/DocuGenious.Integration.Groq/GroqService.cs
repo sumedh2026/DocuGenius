@@ -63,14 +63,14 @@ public class GroqService : IGroqService
     }
 
     public async Task<AnalysisResult> AnalyzeJiraTicketsAsync(
-        List<JiraTicket> tickets, DocumentationType docType)
+        List<JiraTicket> tickets, DocumentationType docType, string? additionalContext = null)
     {
         _logger.LogInformation("Analysing {Count} JIRA ticket(s) with Groq...", tickets.Count);
 
         var ticketContext = BuildJiraContext(tickets);
         var userPrompt = $"""
             {GetFocusInstructions(docType)}
-
+            {BuildAdditionalContextSection(additionalContext)}
             === JIRA TICKETS ===
             {ticketContext}
 
@@ -83,14 +83,14 @@ public class GroqService : IGroqService
     }
 
     public async Task<AnalysisResult> AnalyzeGitRepositoryAsync(
-        GitRepositoryInfo repoInfo, DocumentationType docType)
+        GitRepositoryInfo repoInfo, DocumentationType docType, string? additionalContext = null)
     {
         _logger.LogInformation("Analysing Git repository at {Path} with Groq...", repoInfo.RepositoryPath);
 
         var repoContext = BuildGitContext(repoInfo);
         var userPrompt = $"""
             {GetFocusInstructions(docType)}
-
+            {BuildAdditionalContextSection(additionalContext)}
             === GIT REPOSITORY ===
             {repoContext}
 
@@ -103,7 +103,7 @@ public class GroqService : IGroqService
     }
 
     public async Task<AnalysisResult> AnalyzeCombinedAsync(
-        List<JiraTicket> tickets, GitRepositoryInfo repoInfo, DocumentationType docType)
+        List<JiraTicket> tickets, GitRepositoryInfo repoInfo, DocumentationType docType, string? additionalContext = null)
     {
         _logger.LogInformation("Analysing combined JIRA + Git context with Groq...");
 
@@ -111,6 +111,7 @@ public class GroqService : IGroqService
         var repoContext   = BuildGitContext(repoInfo);
         var userPrompt = $"""
             {GetFocusInstructions(docType)}
+            {BuildAdditionalContextSection(additionalContext)}
             The JIRA tickets define the requirements; the Git repository shows the implementation.
 
             === JIRA TICKETS ===
@@ -126,6 +127,17 @@ public class GroqService : IGroqService
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))} | Repo: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
     }
+
+    private static string BuildAdditionalContextSection(string? additionalContext) =>
+        string.IsNullOrWhiteSpace(additionalContext)
+            ? string.Empty
+            : $"""
+
+            === ADDITIONAL CONTEXT ===
+            {additionalContext.Trim()}
+
+            """;
+
 
     private async Task<AnalysisResult> CallOpenAiAsync(
         string systemPrompt, string userPrompt, DocumentationType docType, string sourceInfo)

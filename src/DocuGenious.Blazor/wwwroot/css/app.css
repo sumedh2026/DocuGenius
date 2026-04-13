@@ -1,0 +1,304 @@
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    height: 100%;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    color: #333;
+}
+
+/* ── Full-page gradient background ───────────────────────────────────────── */
+.dg-page {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
+.dg-card {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 460px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.dg-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.dg-header h1 {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    letter-spacing: -0.5px;
+}
+
+.dg-header .dg-subtitle {
+    font-size: 0.82rem;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* ── Form fields ─────────────────────────────────────────────────────────── */
+.dg-field { margin-bottom: 16px; }
+
+.dg-label {
+    display: block;
+    font-size: 0.80rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.dg-select,
+.dg-input,
+.dg-textarea {
+    width: 100%;
+    border: 1.5px solid #e2e2e2;
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 0.93rem;
+    color: #333;
+    background: #fafafa;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.dg-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+    cursor: pointer;
+}
+
+.dg-textarea {
+    resize: vertical;
+    min-height: 88px;
+    font-family: inherit;
+}
+
+.dg-select:focus,
+.dg-input:focus,
+.dg-textarea:focus {
+    border-color: #667eea;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+}
+
+.dg-select:disabled,
+.dg-input:disabled,
+.dg-textarea:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.dg-hint {
+    font-size: 0.76rem;
+    color: #aaa;
+    margin-top: 4px;
+}
+
+/* ── Tag input (Jira ticket chips) ───────────────────────────────────────── */
+.dg-tag-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border: 1.5px solid #e2e2e2;
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: #fafafa;
+    min-height: 46px;
+    align-items: center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dg-tag-wrapper:focus-within {
+    border-color: #667eea;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+}
+
+.dg-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 3px 8px 3px 10px;
+    border-radius: 20px;
+}
+
+.dg-tag-remove {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.75);
+    cursor: pointer;
+    font-size: 0.88rem;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+
+.dg-tag-remove:hover { color: #fff; }
+
+.dg-tag-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.92rem;
+    flex: 1;
+    min-width: 90px;
+    color: #333;
+    padding: 2px 4px;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.dg-divider { border: none; border-top: 1px solid #f0f0f0; margin: 18px 0; }
+
+.dg-section-title {
+    font-size: 0.70rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #bbb;
+    margin-bottom: 12px;
+}
+
+/* ── Primary button ──────────────────────────────────────────────────────── */
+.dg-btn-primary {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 18px rgba(102,126,234,0.4);
+    margin-top: 8px;
+}
+
+.dg-btn-primary:hover:not(:disabled) {
+    opacity: 0.91;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(102,126,234,0.5);
+}
+
+.dg-btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+.dg-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Download button ─────────────────────────────────────────────────────── */
+.dg-btn-download {
+    width: 100%;
+    padding: 13px;
+    border: 2px solid #16a34a;
+    border-radius: 12px;
+    background: #f0fdf4;
+    color: #16a34a;
+    font-size: 0.94rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+}
+
+.dg-btn-download:hover { background: #16a34a; color: #fff; }
+
+/* ── Generate another link ───────────────────────────────────────────────── */
+.dg-btn-ghost {
+    background: none;
+    border: none;
+    color: #667eea;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 14px;
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 4px;
+}
+
+.dg-btn-ghost:hover { color: #764ba2; }
+
+/* ── Progress / Spinner ──────────────────────────────────────────────────── */
+.dg-progress {
+    text-align: center;
+    padding: 20px 0 8px;
+}
+
+.dg-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid #ede9ff;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: dg-spin 0.75s linear infinite;
+    margin: 0 auto 14px;
+}
+
+@keyframes dg-spin { to { transform: rotate(360deg); } }
+
+.dg-progress-label {
+    font-size: 0.88rem;
+    color: #666;
+    font-weight: 600;
+}
+
+.dg-progress-step {
+    font-size: 0.78rem;
+    color: #bbb;
+    margin-top: 5px;
+}
+
+/* ── Alerts ──────────────────────────────────────────────────────────────── */
+.dg-alert {
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    margin-top: 12px;
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+    line-height: 1.45;
+}
+
+.dg-alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+.dg-alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.dg-alert-icon    { flex-shrink: 0; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.dg-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 0.76rem;
+    color: #ccc;
+}

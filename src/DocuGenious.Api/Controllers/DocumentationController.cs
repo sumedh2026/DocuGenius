@@ -88,9 +88,9 @@ public class DocumentationController : ControllerBase
             _logger.LogInformation("Analysing with Groq ({DocType})...", request.DocumentationType);
             AnalysisResult analysisResult = request.SourceType switch
             {
-                SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType),
-                SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType),
-                _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType)
+                SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
+                SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
+                _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
             };
 
             // Step 4: Generate PDF
@@ -103,6 +103,7 @@ public class DocumentationController : ControllerBase
 
             return Ok(new
             {
+                success  = true,
                 filePath,
                 fileName = Path.GetFileName(filePath)
             });
@@ -112,6 +113,24 @@ public class DocumentationController : ControllerBase
             _logger.LogError(ex, "Error generating documentation");
             return StatusCode(500, new { message = ex.Message });
         }
+    }
+
+    /// <summary>Downloads a previously generated PDF by file name.</summary>
+    [HttpGet("download/{fileName}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DownloadPdf(string fileName)
+    {
+        // Sanitise to prevent path traversal
+        var safeName = Path.GetFileName(fileName);
+        var outputDir = Path.GetFullPath("./output");
+        var fullPath  = Path.Combine(outputDir, safeName);
+
+        if (!System.IO.File.Exists(fullPath))
+            return NotFound(new { message = $"File '{safeName}' not found." });
+
+        var bytes = System.IO.File.ReadAllBytes(fullPath);
+        return File(bytes, "application/pdf", safeName);
     }
 
     private static string BuildDefaultFileName(DocumentationRequest request)

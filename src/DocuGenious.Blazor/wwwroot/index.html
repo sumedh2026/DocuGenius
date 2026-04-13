@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Docu-Genius</title>
+    <base href="/" />
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="DocuGenious.Blazor.styles.css" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- Loading screen matches the gradient brand -->
+        <style>
+            .dg-loading {
+                min-height: 100vh;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex; align-items: center; justify-content: center;
+                flex-direction: column; gap: 16px;
+            }
+            .dg-loading-spinner {
+                width: 48px; height: 48px;
+                border: 4px solid rgba(255,255,255,0.3);
+                border-top-color: #fff;
+                border-radius: 50%;
+                animation: dg-spin 0.75s linear infinite;
+            }
+            .dg-loading-text { color: rgba(255,255,255,0.85); font-family: 'Segoe UI', sans-serif; font-size: 0.9rem; }
+            @keyframes dg-spin { to { transform: rotate(360deg); } }
+        </style>
+        <div class="dg-loading">
+            <div class="dg-loading-spinner"></div>
+            <p class="dg-loading-text">Loading Docu-Genius...</p>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" style="display:none;position:fixed;bottom:0;width:100%;background:#fef2f2;color:#991b1b;padding:10px 16px;text-align:center;font-size:0.85rem;">
+        An unhandled error has occurred. <a href="." style="color:#991b1b;font-weight:600">Reload</a>
+    </div>
+
+    <script>
+        // Helper called by Blazor to trigger a PDF download from a base64 string
+        window.downloadFileFromBase64 = function (base64, fileName, mimeType) {
+            const link = document.createElement('a');
+            link.href = 'data:' + mimeType + ';base64,' + base64;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+    </script>
+
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+</body>
+
+</html>

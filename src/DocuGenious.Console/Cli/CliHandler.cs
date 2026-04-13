@@ -45,7 +45,7 @@ public class CliHandler
             AnsiConsole.WriteLine();
         }
 
-        AnsiConsole.MarkupLine("\n[grey]Thank you for using DocuGenious. Goodbye![/]");
+        AnsiConsole.MarkupLine("\n[grey]Thank you for using Docu-Genius. Goodbye![/]");
     }
 
     // ─── Banner ──────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ public class CliHandler
     private static void PrintBanner()
     {
         AnsiConsole.Write(
-            new FigletText("DocuGenious")
+            new FigletText("Docu-Genius")
                 .Centered()
                 .Color(Color.SteelBlue1));
 
