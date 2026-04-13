@@ -1,9 +1,10 @@
-using DocuGenious.Configuration;
-using DocuGenious.Models;
+using DocuGenious.Core.Configuration;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Core.Models;
 using LibGit2Sharp;
 using Microsoft.Extensions.Logging;
 
-namespace DocuGenious.Services;
+namespace DocuGenious.Integration.Git;
 
 public class GitService : IGitService
 {
@@ -161,7 +162,7 @@ public class GitService : IGitService
                 break;
 
             var fi = new FileInfo(file);
-            var relativePath = Path.GetRelativePath(rootPath, file);
+            var relativePath = System.IO.Path.GetRelativePath(rootPath, file);
 
             var fileInfo = new GitFileInfo
             {
@@ -193,7 +194,7 @@ public class GitService : IGitService
     {
         foreach (var dir in Directory.EnumerateDirectories(path))
         {
-            var dirName = Path.GetFileName(dir);
+            var dirName = System.IO.Path.GetFileName(dir);
             if (SkippedDirectories.Contains(dirName)) continue;
 
             foreach (var f in EnumerateSourceFiles(dir, allowedExtensions))
@@ -202,7 +203,7 @@ public class GitService : IGitService
 
         foreach (var file in Directory.EnumerateFiles(path))
         {
-            var ext = Path.GetExtension(file);
+            var ext = System.IO.Path.GetExtension(file);
             if (allowedExtensions.Contains(ext))
                 yield return file;
         }
@@ -249,9 +250,9 @@ public class GitService : IGitService
         return [.. techs];
     }
 
-    private static DirectoryStructure BuildDirectoryStructure(DirectoryInfo dir, int depth, int maxDepth)
+    private static Core.Models.DirectoryStructure BuildDirectoryStructure(DirectoryInfo dir, int depth, int maxDepth)
     {
-        var node = new DirectoryStructure { Name = dir.Name, IsDirectory = true };
+        var node = new Core.Models.DirectoryStructure { Name = dir.Name, IsDirectory = true };
 
         if (depth >= maxDepth) return node;
 
@@ -265,7 +266,7 @@ public class GitService : IGitService
 
             foreach (var file in dir.GetFiles().Take(20))
             {
-                node.Children.Add(new DirectoryStructure { Name = file.Name, IsDirectory = false });
+                node.Children.Add(new Core.Models.DirectoryStructure { Name = file.Name, IsDirectory = false });
             }
         }
         catch

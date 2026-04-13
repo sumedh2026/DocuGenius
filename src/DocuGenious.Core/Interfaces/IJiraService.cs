@@ -1,6 +1,6 @@
-using DocuGenious.Models;
+using DocuGenious.Core.Models;
 
-namespace DocuGenious.Services;
+namespace DocuGenious.Core.Interfaces;
 
 public interface IJiraService
 {

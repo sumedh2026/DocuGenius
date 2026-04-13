@@ -1,4 +1,4 @@
-namespace DocuGenious.Models;
+namespace DocuGenious.Core.Models;
 
 public class DocumentationRequest
 {

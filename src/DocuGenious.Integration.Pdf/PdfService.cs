@@ -1,13 +1,14 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using DocuGenious.Configuration;
-using DocuGenious.Models;
+using DocuGenious.Core.Configuration;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Core.Models;
 using Microsoft.Extensions.Logging;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 
-namespace DocuGenious.Services;
+namespace DocuGenious.Integration.Pdf;
 
 public class PdfService : IPdfService
 {
@@ -450,30 +451,14 @@ public class PdfService : IPdfService
     // Inline numbered-list normaliser
     // =========================================================================
 
-    // A list marker is: digit(s) followed by ) or . then whitespace,
-    // AND must be at start-of-string or preceded by whitespace.
-    // We do NOT use a general "any number" match to avoid false-positives
-    // from HTTP codes, version numbers, JSON values, etc.
     private static readonly Regex ListMarkerRx =
         new(@"\d+[).]\s+", RegexOptions.Compiled);
 
-    // Safety gates: only process a line if it contains BOTH item 1 and item 2
-    // as explicit list markers (e.g. "1) " or "1. " AND "2) " or "2. ").
     private static readonly Regex ItemOneRx =
         new(@"(^|\s)1[).]\s", RegexOptions.Compiled);
     private static readonly Regex ItemTwoRx =
         new(@"(^|\s)2[).]\s", RegexOptions.Compiled);
 
-    /// <summary>
-    /// Detects lines where numbered items are written inline
-    /// (e.g. "Intro: 1) Do this. 2) Do that.") and rewrites them so each
-    /// item is on its own line, allowing the block parser to render them
-    /// as a proper numbered list.
-    ///
-    /// Safety: only triggers when the line explicitly contains both
-    /// item 1 and item 2 markers to avoid false-positives on HTTP codes,
-    /// version numbers, JSON values, etc.
-    /// </summary>
     private static string NormalizeInlineNumberedLists(string raw)
     {
         var sb = new StringBuilder();
@@ -482,14 +467,12 @@ public class PdfService : IPdfService
         {
             var line = rawLine.TrimEnd();
 
-            // Must have both "1) " / "1. " AND "2) " / "2. " to be treated as a list
             if (!ItemOneRx.IsMatch(line) || !ItemTwoRx.IsMatch(line))
             {
                 sb.AppendLine(line);
                 continue;
             }
 
-            // Collect only markers that are at start-of-string or preceded by whitespace
             var markerMatches = ListMarkerRx.Matches(line)
                 .Cast<Match>()
                 .Where(m => m.Index == 0 || char.IsWhiteSpace(line[m.Index - 1]))
@@ -501,12 +484,10 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // Intro: everything before the first marker
             var intro = line[..markerMatches[0].Index].TrimEnd().TrimEnd(':').Trim();
             if (!string.IsNullOrWhiteSpace(intro))
                 sb.AppendLine(intro + ":");
 
-            // Each item: from end of its marker to start of the next marker
             for (int i = 0; i < markerMatches.Count; i++)
             {
                 var m         = markerMatches[i];
@@ -516,7 +497,6 @@ public class PdfService : IPdfService
                     ? markerMatches[i + 1].Index
                     : line.Length;
 
-                // Strip trailing whitespace that belongs to the next marker's leading space
                 while (textEnd > textStart && char.IsWhiteSpace(line[textEnd - 1]))
                     textEnd--;
 
@@ -564,7 +544,6 @@ public class PdfService : IPdfService
         {
             var line = rawLine.TrimEnd();
 
-            // ── Code fence ──────────────────────────────────────────────────
             if (line.TrimStart().StartsWith("```"))
             {
                 if (!inCode)
@@ -587,7 +566,6 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── Horizontal rule ─────────────────────────────────────────────
             if (Regex.IsMatch(line, @"^(\s*[-*_]){3,}\s*$"))
             {
                 FlushParagraph();
@@ -595,7 +573,6 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── ATX Headings ────────────────────────────────────────────────
             var headingMatch = Regex.Match(line, @"^(#{1,4})\s+(.+)");
             if (headingMatch.Success)
             {
@@ -608,7 +585,6 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── Block quote ─────────────────────────────────────────────────
             if (line.TrimStart().StartsWith("> "))
             {
                 FlushParagraph();
@@ -617,7 +593,6 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── Numbered list ────────────────────────────────────────────────
             var numMatch = NumberedListRx.Match(line);
             if (numMatch.Success)
             {
@@ -629,7 +604,6 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── Bullet list ──────────────────────────────────────────────────
             var bulletMatch = BulletListRx.Match(line);
             if (bulletMatch.Success)
             {
@@ -640,20 +614,17 @@ public class PdfService : IPdfService
                 continue;
             }
 
-            // ── Blank line = paragraph break ─────────────────────────────────
             if (string.IsNullOrWhiteSpace(line))
             {
                 FlushParagraph();
                 continue;
             }
 
-            // ── Regular text — accumulate into paragraph ─────────────────────
             if (paraBuffer.Length > 0)
                 paraBuffer.Append(' ');
             paraBuffer.Append(line.Trim());
         }
 
-        // Flush any open blocks
         if (inCode && codeBuf.Length > 0)
             blocks.Add(new MdBlock(MdBlockType.CodeBlock, codeBuf.ToString().TrimEnd()));
 
@@ -668,22 +639,16 @@ public class PdfService : IPdfService
 
     private record InlineSpan(string Text, bool Bold = false, bool Italic = false, bool Code = false);
 
-    /// <summary>
-    /// Splits a string into spans honouring **bold**, *italic*, `code` markdown.
-    /// Handles **bold** before *italic* to avoid partial matches.
-    /// </summary>
     private static List<InlineSpan> ParseInlineSpans(string text)
     {
         var spans  = new List<InlineSpan>();
         var remain = text;
 
-        // Pattern: `code` | **bold** | __bold__ | *italic* | _italic_
         var rx = new Regex(@"(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|(?<!\*)\*(?!\*)[^*]+(?<!\*)\*(?!\*)|(?<!_)_(?!_)[^_]+(?<!_)_(?!_))");
 
         int pos = 0;
         foreach (Match m in rx.Matches(text))
         {
-            // Text before match
             if (m.Index > pos)
                 spans.Add(new InlineSpan(text[pos..m.Index]));
 
@@ -705,12 +670,8 @@ public class PdfService : IPdfService
         return spans.Where(s => s.Text.Length > 0).ToList();
     }
 
-    // ─── Terminal code block (dark bg, white text, pretty JSON) ──────────────────
+    // ─── Terminal code block ──────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Renders content in a dark terminal-style box.
-    /// If the text is valid JSON it is pretty-printed line by line.
-    /// </summary>
     private static void RenderTerminalBlock(IContainer container, string content)
     {
         var formatted = PrettyPrintJson(content.Trim());
@@ -723,7 +684,6 @@ public class PdfService : IPdfService
             {
                 col.Spacing(0);
 
-                // Render each line separately so line breaks are guaranteed
                 foreach (var line in formatted.Split('\n'))
                 {
                     col.Item()
@@ -736,37 +696,24 @@ public class PdfService : IPdfService
             });
     }
 
-    /// <summary>
-    /// Attempts to parse and re-serialize the string as indented JSON.
-    /// Applies light cleanup for common AI quirks (single quotes, trailing commas,
-    /// unquoted keys) before parsing. Falls back to manual indentation if still
-    /// not valid JSON, so the output is always human-readable.
-    /// </summary>
     private static string PrettyPrintJson(string raw)
     {
         var trimmed = raw.Trim();
 
-        // Not JSON-like at all — return as-is
         if (!trimmed.StartsWith("{") && !trimmed.StartsWith("["))
             return trimmed;
 
-        // ── Attempt 1: strict parse ──────────────────────────────────────────
         var pretty = TryParseJson(trimmed);
         if (pretty != null) return pretty;
 
-        // ── Attempt 2: light cleanup then parse ──────────────────────────────
         var cleaned = trimmed
-            // Single quotes → double quotes (but not inside already-double-quoted strings)
             .Replace("'", "\"")
-            // Trailing commas before } or ]
             .Replace(",\n}", "\n}").Replace(",\n]", "\n]")
             .Replace(", }", " }").Replace(", ]", " ]");
 
         pretty = TryParseJson(cleaned);
         if (pretty != null) return pretty;
 
-        // ── Attempt 3: manual indentation ────────────────────────────────────
-        // Even if it's not valid JSON, indent it visually so it's readable
         return ManualIndent(trimmed);
     }
 
@@ -790,10 +737,6 @@ public class PdfService : IPdfService
         }
     }
 
-    /// <summary>
-    /// Simple character-by-character indenter for JSON-like text
-    /// when proper parsing fails.
-    /// </summary>
     private static string ManualIndent(string text)
     {
         var sb     = new StringBuilder();

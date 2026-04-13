@@ -1,4 +1,4 @@
-namespace DocuGenious.Configuration;
+namespace DocuGenious.Core.Configuration;
 
 public class AppSettings
 {

@@ -1,8 +1,8 @@
-using DocuGenious.Models;
-using DocuGenious.Services;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Core.Models;
 using Spectre.Console;
 
-namespace DocuGenious.Cli;
+namespace DocuGenious.Console.Cli;
 
 /// <summary>
 /// Drives the interactive command-line experience using Spectre.Console.
@@ -291,7 +291,7 @@ public class CliHandler
                         gitTask.Value = 1;
                     }
 
-                    // Step 3 — OpenAI analysis
+                    // Step 3 — Groq analysis
                     var aiTask = ctx.AddTask("[blue]Analysing with Groq[/]", maxValue: 1);
 
                     analysisResult = request.SourceType switch

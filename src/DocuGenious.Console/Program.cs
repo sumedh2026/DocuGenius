@@ -1,6 +1,10 @@
-using DocuGenious.Cli;
-using DocuGenious.Configuration;
-using DocuGenious.Services;
+using DocuGenious.Console.Cli;
+using DocuGenious.Core.Configuration;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Integration.Git;
+using DocuGenious.Integration.Groq;
+using DocuGenious.Integration.Jira;
+using DocuGenious.Integration.Pdf;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

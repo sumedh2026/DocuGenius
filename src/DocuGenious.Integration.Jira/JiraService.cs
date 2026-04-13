@@ -2,15 +2,16 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Atlassian.Jira;
-using DocuGenious.Configuration;
-using DocuGenious.Models;
+using DocuGenious.Core.Configuration;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Core.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DocuGenious.Services;
+namespace DocuGenious.Integration.Jira;
 
 public class JiraService : IJiraService
 {
-    private readonly Jira _jiraClient;
+    private readonly Atlassian.Jira.Jira _jiraClient;
     private readonly HttpClient _httpClient;
     private readonly ILogger<JiraService> _logger;
 
@@ -27,7 +28,7 @@ public class JiraService : IJiraService
         }
 
         // Atlassian.SDK: authenticate using username + API token (Basic Auth)
-        _jiraClient = Jira.CreateRestClient(
+        _jiraClient = Atlassian.Jira.Jira.CreateRestClient(
             url: settings.Jira.BaseUrl,
             username: settings.Jira.Username,
             password: settings.Jira.ApiToken
@@ -60,7 +61,7 @@ public class JiraService : IJiraService
         }
     }
 
-    public async Task<JiraTicket> GetTicketAsync(string ticketId)
+    public async Task<Core.Models.JiraTicket> GetTicketAsync(string ticketId)
     {
         _logger.LogInformation("Fetching JIRA ticket: {TicketId}", ticketId);
 
@@ -71,7 +72,7 @@ public class JiraService : IJiraService
 
         var comments = await issue.GetCommentsAsync();
 
-        var ticket = new JiraTicket
+        var ticket = new Core.Models.JiraTicket
         {
             Key = issue.Key.Value,
             Summary = issue.Summary ?? string.Empty,
@@ -84,7 +85,7 @@ public class JiraService : IJiraService
             CreatedDate = issue.Created,
             UpdatedDate = issue.Updated,
             ProjectKey = issue.Project ?? string.Empty,
-            Comments = comments.Select(c => new JiraComment
+            Comments = comments.Select(c => new Core.Models.JiraComment
             {
                 Author = c.Author ?? string.Empty,
                 Body = c.Body ?? string.Empty,
@@ -106,9 +107,9 @@ public class JiraService : IJiraService
         return ticket;
     }
 
-    public async Task<List<JiraTicket>> GetTicketsAsync(IEnumerable<string> ticketIds)
+    public async Task<List<Core.Models.JiraTicket>> GetTicketsAsync(IEnumerable<string> ticketIds)
     {
-        var tickets = new List<JiraTicket>();
+        var tickets = new List<Core.Models.JiraTicket>();
 
         foreach (var id in ticketIds)
         {
@@ -131,9 +132,9 @@ public class JiraService : IJiraService
     /// Calls /rest/api/3/search/jql directly because Atlassian.SDK still targets
     /// the removed /rest/api/2/search endpoint (HTTP 410 on Jira Cloud).
     /// </summary>
-    private async Task<List<JiraTicket>> FetchSubTasksAsync(string parentKey)
+    private async Task<List<Core.Models.JiraTicket>> FetchSubTasksAsync(string parentKey)
     {
-        var subTasks = new List<JiraTicket>();
+        var subTasks = new List<Core.Models.JiraTicket>();
 
         try
         {
@@ -160,7 +161,7 @@ public class JiraService : IJiraService
                 var key = issue.GetProperty("key").GetString() ?? string.Empty;
                 var fields = issue.GetProperty("fields");
 
-                subTasks.Add(new JiraTicket
+                subTasks.Add(new Core.Models.JiraTicket
                 {
                     Key = key,
                     Summary = fields.TryGetProperty("summary", out var s) ? s.GetString() ?? string.Empty : string.Empty,

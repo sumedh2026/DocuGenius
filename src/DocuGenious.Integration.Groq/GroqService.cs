@@ -2,13 +2,14 @@ using System.ClientModel;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using DocuGenious.Configuration;
-using DocuGenious.Models;
+using DocuGenious.Core.Configuration;
+using DocuGenious.Core.Interfaces;
+using DocuGenious.Core.Models;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
 
-namespace DocuGenious.Services;
+namespace DocuGenious.Integration.Groq;
 
 public class GroqService : IGroqService
 {
