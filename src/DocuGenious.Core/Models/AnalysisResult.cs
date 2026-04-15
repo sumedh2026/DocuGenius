@@ -40,5 +40,5 @@ public enum DocumentationType
     UserGuide,
     ApiDocumentation,
     ArchitectureOverview,
-    FullDocumentation
+    FullDocumentation 
 }
