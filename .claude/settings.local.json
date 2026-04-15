@@ -14,7 +14,8 @@
       "Bash(dotnet new:*)",
       "Bash(dotnet sln:*)",
       "Bash(ls /d/DocuGenious/*.sln)",
-      "Bash(ls /d/DocuGenious/*.csproj)"
+      "Bash(ls /d/DocuGenious/*.csproj)",
+      "Bash(git -C \"D:/DocuGenious\" show HEAD:src/DocuGenious.Console/appsettings.json)"
     ]
   }
 }

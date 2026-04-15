@@ -64,6 +64,45 @@ public class JiraController : ControllerBase
     }
 
     /// <summary>
+    /// Validate one or more JIRA ticket IDs — checks existence, status and summary.
+    /// </summary>
+    [HttpPost("validate-tickets")]
+    [ProducesResponseType(typeof(List<TicketValidationResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ValidateTickets([FromBody] GetTicketsRequest request)
+    {
+        var results = new List<TicketValidationResult>();
+
+        foreach (var ticketId in request.TicketIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var item = new TicketValidationResult { TicketId = ticketId.ToUpper() };
+            try
+            {
+                var ticket = await _jiraService.GetTicketAsync(ticketId);
+                item.Exists  = true;
+                item.Summary = ticket.Summary;
+                item.Status  = ticket.Status;
+                item.Message = string.IsNullOrWhiteSpace(ticket.Status)
+                    ? ticket.Summary
+                    : $"{ticket.Summary}  [{ticket.Status}]";
+            }
+            catch (KeyNotFoundException)
+            {
+                item.Exists  = false;
+                item.Message = $"Ticket '{ticketId}' not found in JIRA.";
+            }
+            catch (Exception ex)
+            {
+                item.Exists  = false;
+                item.Message = $"Error checking '{ticketId}': {ex.Message}";
+                _logger.LogWarning(ex, "Error validating ticket {TicketId}", ticketId);
+            }
+            results.Add(item);
+        }
+
+        return Ok(results);
+    }
+
+    /// <summary>
     /// Validate the JIRA connection.
     /// </summary>
     [HttpGet("validate")]

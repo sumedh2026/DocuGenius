@@ -1,0 +1,7 @@
+{
+  "Cors": {
+    "AllowedOrigins": [
+      "https://YOUR-BLAZOR-TUNNEL-URL.devtunnels.ms"
+    ]
+  }
+}

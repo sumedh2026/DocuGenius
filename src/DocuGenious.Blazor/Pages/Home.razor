@@ -2,6 +2,7 @@
 @using DocuGenious.Blazor.Models
 @using DocuGenious.Blazor.Services
 @inject DocumentationApiService Api
+@inject ValidationService Validator
 @inject IJSRuntime JS
 
 <PageTitle>Docu-Genius</PageTitle>
@@ -104,9 +105,52 @@
         }
 
         <!-- ── Submit ─────────────────────────────────────────────────── -->
-        <button class="dg-btn-primary" @onclick="Generate" disabled="@(!CanSubmit)">
+        <button class="dg-btn-primary" @onclick="StartValidation" disabled="@(!CanSubmit)">
             ✨ Create Document
         </button>
+    }
+
+    <!-- ── Validating state ────────────────────────────────────────────── -->
+    @if (_state == UiState.Validating)
+    {
+        <p class="dg-section-title" style="margin-bottom:12px">Validating inputs...</p>
+
+        <div class="dg-validation-list">
+            @foreach (var row in _validationRows)
+            {
+                <div class="dg-validation-row dg-vstatus-@row.Status.ToString().ToLower()">
+                    <span class="dg-vicon">@StatusIcon(row.Status)</span>
+                    <div class="dg-vtext">
+                        <span class="dg-vlabel">@row.Label</span>
+                        @if (!string.IsNullOrWhiteSpace(row.Message))
+                        {
+                            <span class="dg-vmsg">@row.Message</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_validationDone)
+        {
+            @if (_canProceed)
+            {
+                <div class="dg-alert dg-alert-success" style="margin-top:16px">
+                    <span class="dg-alert-icon">✅</span>
+                    <span>All checks passed@(_hasWarnings ? " (with warnings)" : ""). Proceeding to generation...</span>
+                </div>
+            }
+            else
+            {
+                <div class="dg-alert dg-alert-error" style="margin-top:16px">
+                    <span class="dg-alert-icon">❌</span>
+                    <span>Validation failed. Please fix the issues above and try again.</span>
+                </div>
+                <div style="display:flex;gap:10px;margin-top:12px">
+                    <button class="dg-btn-primary" @onclick="Reset">← Fix and retry</button>
+                </div>
+            }
+        }
     }
 
     @if (_state == UiState.Generating)
@@ -154,23 +198,30 @@
 
     <!-- ── Footer ─────────────────────────────────────────────────────── -->
     <p class="dg-footer">Powered by Docu-Genius · Groq / LLaMA</p>
+    <p class="dg-footer" style="font-size:0.7rem;opacity:0.5;margin-top:2px">API: @Api.ApiBaseUrl</p>
 
 </div>
 
 @code {
     // ── State machine ────────────────────────────────────────────────────────
-    private enum UiState { Form, Generating, Success, Error }
+    private enum UiState { Form, Validating, Generating, Success, Error }
     private UiState _state = UiState.Form;
 
     // ── Form fields ──────────────────────────────────────────────────────────
-    private string _sourceType      = string.Empty;
-    private string _docType         = "FullDocumentation";
-    private string _repoUrl         = string.Empty;
-    private string _branch          = string.Empty;
+    private string _sourceType       = string.Empty;
+    private string _docType          = "FullDocumentation";
+    private string _repoUrl          = string.Empty;
+    private string _branch           = string.Empty;
     private string _additionalContext = string.Empty;
-    private string _outputFileName  = string.Empty;
-    private string _ticketInput     = string.Empty;
-    private List<string> _ticketIds = [];
+    private string _outputFileName   = string.Empty;
+    private string _ticketInput      = string.Empty;
+    private List<string> _ticketIds  = [];
+
+    // ── Validation ───────────────────────────────────────────────────────────
+    private List<ValidationRow> _validationRows = [];
+    private bool _validationDone = false;
+    private bool _canProceed     = false;
+    private bool _hasWarnings    = false;
 
     // ── Progress ─────────────────────────────────────────────────────────────
     private string _progressLabel = "Analysing your input...";
@@ -194,22 +245,29 @@
         string.Join("_", new[]
         {
             _ticketIds.FirstOrDefault() ?? string.Empty,
-            !string.IsNullOrWhiteSpace(_repoUrl) ? _repoUrl.TrimEnd('/').Split('/').Last().Replace(".git","") : string.Empty,
+            !string.IsNullOrWhiteSpace(_repoUrl)
+                ? _repoUrl.TrimEnd('/').Split('/').Last().Replace(".git","")
+                : string.Empty,
             _docType,
             DateTime.UtcNow.ToString("yyyyMMdd")
         }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private static string StatusIcon(ValidationStatus s) => s switch
+    {
+        ValidationStatus.Checking => "⏳",
+        ValidationStatus.Pass     => "✅",
+        ValidationStatus.Warn     => "⚠️",
+        ValidationStatus.Fail     => "❌",
+        _                         => "•"
+    };
 
     // ── Tag input handling ───────────────────────────────────────────────────
     private void HandleTagKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or "," or "Tab" or " ")
-        {
             AddTicket();
-        }
         else if (e.Key == "Backspace" && string.IsNullOrEmpty(_ticketInput) && _ticketIds.Count > 0)
-        {
             _ticketIds.RemoveAt(_ticketIds.Count - 1);
-        }
     }
 
     private void AddTicket()
@@ -225,12 +283,12 @@
     private async Task FocusTagInput()
         => await JS.InvokeVoidAsync("eval", "document.getElementById('tag-input')?.focus()");
 
-    // ── Generate ─────────────────────────────────────────────────────────────
-    private async Task Generate()
+    // ── Validation → Generate pipeline ───────────────────────────────────────
+    private async Task StartValidation()
     {
         _validationError = string.Empty;
 
-        // Flush any typed-but-not-entered ticket
+        // Flush typed-but-not-entered ticket
         if (!string.IsNullOrWhiteSpace(_ticketInput))
             AddTicket();
 
@@ -242,27 +300,57 @@
             return;
         }
 
+        _state           = UiState.Validating;
+        _validationRows  = [];
+        _validationDone  = false;
+        _canProceed      = false;
+        _hasWarnings     = false;
+        StateHasChanged();
+
+        var (rows, canProceed) = await Validator.ValidateAsync(
+            _sourceType,
+            [.. _ticketIds],
+            ShowGit ? _repoUrl.Trim() : null,
+            string.IsNullOrWhiteSpace(_branch) ? null : _branch.Trim(),
+            string.IsNullOrWhiteSpace(_outputFileName) ? null : _outputFileName.Trim(),
+            () => { StateHasChanged(); });
+
+        _validationRows = rows;
+        _canProceed     = canProceed;
+        _hasWarnings    = rows.Any(r => r.Status == ValidationStatus.Warn);
+        _validationDone = true;
+        StateHasChanged();
+
+        if (canProceed)
+        {
+            // Small pause so user sees the green pass summary before generation starts
+            await Task.Delay(900);
+            await Generate();
+        }
+    }
+
+    // ── Generate ─────────────────────────────────────────────────────────────
+    private async Task Generate()
+    {
         _state = UiState.Generating;
         SetProgressStep(1);
 
         var request = new GenerateRequest
         {
-            SourceType      = _sourceType,
-            JiraTicketIds   = [.. _ticketIds],
-            GitRepositoryUrl = ShowGit ? _repoUrl.Trim() : null,
-            GitBranch       = string.IsNullOrWhiteSpace(_branch) ? null : _branch.Trim(),
+            SourceType        = _sourceType,
+            JiraTicketIds     = [.. _ticketIds],
+            GitRepositoryUrl  = ShowGit ? _repoUrl.Trim() : null,
+            GitBranch         = string.IsNullOrWhiteSpace(_branch) ? null : _branch.Trim(),
             DocumentationType = _docType,
             AdditionalContext = string.IsNullOrWhiteSpace(_additionalContext) ? null : _additionalContext.Trim(),
-            OutputFileName  = string.IsNullOrWhiteSpace(_outputFileName) ? DefaultFileName : _outputFileName.Trim()
+            OutputFileName    = string.IsNullOrWhiteSpace(_outputFileName) ? DefaultFileName : _outputFileName.Trim()
         };
 
         SetProgressStep(2);
         _result = await Api.GenerateDocumentAsync(request);
 
         if (_result.Success)
-        {
             _state = UiState.Success;
-        }
         else
         {
             _errorMessage = _result.Error ?? "An unknown error occurred.";
@@ -301,17 +389,19 @@
     // ── Reset ─────────────────────────────────────────────────────────────────
     private void Reset()
     {
-        _state            = UiState.Form;
-        _sourceType       = string.Empty;
-        _docType          = "FullDocumentation";
-        _repoUrl          = string.Empty;
-        _branch           = string.Empty;
+        _state             = UiState.Form;
+        _sourceType        = string.Empty;
+        _docType           = "FullDocumentation";
+        _repoUrl           = string.Empty;
+        _branch            = string.Empty;
         _additionalContext = string.Empty;
-        _outputFileName   = string.Empty;
-        _ticketInput      = string.Empty;
-        _ticketIds        = [];
-        _result           = null;
-        _errorMessage     = string.Empty;
-        _validationError  = string.Empty;
+        _outputFileName    = string.Empty;
+        _ticketInput       = string.Empty;
+        _ticketIds         = [];
+        _result            = null;
+        _errorMessage      = string.Empty;
+        _validationError   = string.Empty;
+        _validationRows    = [];
+        _validationDone    = false;
     }
 }

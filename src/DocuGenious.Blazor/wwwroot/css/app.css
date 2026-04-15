@@ -302,3 +302,58 @@ html, body {
     font-size: 0.76rem;
     color: #ccc;
 }
+
+/* ── Validation panel ────────────────────────────────────────────────────── */
+.dg-validation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.dg-validation-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    font-size: 0.875rem;
+    transition: background 0.2s;
+}
+
+.dg-vicon { flex-shrink: 0; font-size: 1rem; line-height: 1.4; }
+
+.dg-vtext {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dg-vlabel {
+    font-weight: 600;
+    color: #374151;
+}
+
+.dg-vmsg {
+    color: #6b7280;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+/* Status-specific colours */
+.dg-vstatus-checking { background: #f0f9ff; border-color: #bae6fd; }
+.dg-vstatus-checking .dg-vlabel { color: #0369a1; }
+
+.dg-vstatus-pass     { background: #f0fdf4; border-color: #bbf7d0; }
+.dg-vstatus-pass .dg-vlabel     { color: #166534; }
+.dg-vstatus-pass .dg-vmsg       { color: #4b7c5f; }
+
+.dg-vstatus-warn     { background: #fffbeb; border-color: #fde68a; }
+.dg-vstatus-warn .dg-vlabel     { color: #92400e; }
+.dg-vstatus-warn .dg-vmsg       { color: #b45309; }
+
+.dg-vstatus-fail     { background: #fef2f2; border-color: #fecaca; }
+.dg-vstatus-fail .dg-vlabel     { color: #991b1b; }
+.dg-vstatus-fail .dg-vmsg       { color: #b91c1c; }

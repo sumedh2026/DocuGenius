@@ -37,6 +37,83 @@ public class GitService : IGitService
         return Task.FromResult(Repository.IsValid(localPath));
     }
 
+    public async Task<RepoValidationResult> ValidateRemoteRepositoryAsync(
+        string repositoryUrl, string? branch = null)
+    {
+        var result = new RepoValidationResult { RepositoryUrl = repositoryUrl };
+        try
+        {
+            _logger.LogInformation("Validating remote repository: {Url}", repositoryUrl);
+
+            IEnumerable<Reference> refs = await Task.Run(() =>
+                Repository.ListRemoteReferences(repositoryUrl,
+                    (url, user, cred) => new UsernamePasswordCredentials
+                    {
+                        Username = string.IsNullOrWhiteSpace(_settings.Username) ? "git" : _settings.Username,
+                        Password = _settings.PersonalAccessToken ?? string.Empty
+                    }));
+
+            var refList = refs.ToList();
+            result.Accessible = true;
+
+            // Detect default branch from HEAD symref or fall back to common names
+            var headRef = refList.FirstOrDefault(r => r.CanonicalName == "HEAD");
+            var headTarget = (headRef as SymbolicReference)?.Target?.CanonicalName;
+            result.DefaultBranch = headTarget?.Replace("refs/heads/", "")
+                ?? refList.FirstOrDefault(r => r.CanonicalName is "refs/heads/main" or "refs/heads/master")
+                          ?.CanonicalName.Replace("refs/heads/", "")
+                ?? "main";
+
+            if (!string.IsNullOrWhiteSpace(branch))
+            {
+                result.BranchExists = refList.Any(r =>
+                    r.CanonicalName == $"refs/heads/{branch}" ||
+                    r.CanonicalName.EndsWith($"/{branch}"));
+
+                if (!result.BranchExists)
+                {
+                    var available = refList
+                        .Where(r => r.CanonicalName.StartsWith("refs/heads/"))
+                        .Select(r => r.CanonicalName.Replace("refs/heads/", ""))
+                        .Take(5);
+                    result.Message = $"Branch '{branch}' not found. Available: {string.Join(", ", available)}";
+                }
+                else
+                {
+                    result.Message = $"Repository accessible · branch '{branch}' found";
+                }
+            }
+            else
+            {
+                result.BranchExists = true;
+                result.Message = $"Repository accessible · default branch: {result.DefaultBranch}";
+            }
+        }
+        catch (LibGit2SharpException ex) when (
+            ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("401", StringComparison.Ordinal))
+        {
+            result.Accessible = false;
+            result.Message = "Authentication failed — check your Personal Access Token in configuration.";
+        }
+        catch (LibGit2SharpException ex) when (
+            ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("404", StringComparison.Ordinal) ||
+            ex.Message.Contains("Repository not found", StringComparison.OrdinalIgnoreCase))
+        {
+            result.Accessible = false;
+            result.Message = "Repository not found or you do not have access.";
+        }
+        catch (Exception ex)
+        {
+            result.Accessible = false;
+            result.Message = $"Cannot reach repository: {ex.Message}";
+            _logger.LogWarning(ex, "Remote repository validation failed for {Url}", repositoryUrl);
+        }
+
+        return result;
+    }
+
     public async Task<GitRepositoryInfo> CloneAndAnalyzeAsync(
         string repositoryUrl, string? branch = null, DocumentationRequest? request = null)
     {

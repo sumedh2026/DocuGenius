@@ -47,6 +47,21 @@ public class GitController : ControllerBase
     }
 
     /// <summary>
+    /// Validate a remote Git repository URL and optional branch without cloning.
+    /// </summary>
+    [HttpGet("validate-remote")]
+    [ProducesResponseType(typeof(RepoValidationResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ValidateRemote(
+        [FromQuery] string url, [FromQuery] string? branch = null)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return BadRequest(new { message = "url is required" });
+
+        var result = await _gitService.ValidateRemoteRepositoryAsync(url, branch);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Clone and analyse a remote Git repository.
     /// </summary>
     [HttpPost("analyse/remote")]

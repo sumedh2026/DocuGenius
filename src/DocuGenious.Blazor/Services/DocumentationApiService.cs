@@ -12,6 +12,8 @@ public class DocumentationApiService
         _http = http;
     }
 
+    public string ApiBaseUrl => _http.BaseAddress?.ToString() ?? "unknown";
+
     // ─── JIRA ────────────────────────────────────────────────────────────────────
 
     public async Task<ConnectionResult> ValidateJiraAsync()

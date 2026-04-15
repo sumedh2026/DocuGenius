@@ -13,20 +13,46 @@ var appSettings = new AppSettings();
 builder.Configuration.Bind(appSettings);
 builder.Services.AddSingleton(appSettings);
 
-// ─── CORS (allow Blazor WASM dev origin + any configured origins) ─────────────
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+
+// Static localhost origins always allowed (dev machine)
+var localhostOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "https://localhost:7170",
+    "http://localhost:5138",
+    "https://localhost:7002",
+    "http://localhost:5002",
+    "https://localhost:7001",
+    "http://localhost:5001"
+};
+
+// Additional origins from appsettings (e.g. production / staging URLs)
+var configOrigins = (builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [])
+    .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("BlazorPolicy", policy =>
     {
         policy
-            .WithOrigins(
-                "https://localhost:7170",   // Blazor WASM https
-                "http://localhost:5138",    // Blazor WASM http
-                "https://localhost:7002",
-                "http://localhost:5002",
-                "https://localhost:7001",
-                "http://localhost:5001")
+            .SetIsOriginAllowed(origin =>
+            {
+                // 1. Always allow localhost dev origins
+                if (localhostOrigins.Contains(origin)) return true;
+
+                // 2. Allow any origin configured in appsettings Cors:AllowedOrigins
+                if (configOrigins.Contains(origin)) return true;
+
+                // 3. Allow any *.devtunnels.ms origin in Development (QA via Dev Tunnel)
+                if (builder.Environment.IsDevelopment() &&
+                    Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                    uri.Host.EndsWith(".devtunnels.ms", StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                return false;
+            })
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
