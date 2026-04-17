@@ -33,12 +33,11 @@ public class ApiEndpoint
     public string RequestBody { get; set; } = string.Empty;
     public string ResponseBody { get; set; } = string.Empty;
 }
-
 public enum DocumentationType
 {
     TechnicalDocumentation,
     UserGuide,
     ApiDocumentation,
     ArchitectureOverview,
-    FullDocumentation
+    FullDocumentation 
 }
