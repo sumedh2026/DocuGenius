@@ -41,9 +41,17 @@ public class GitService : IGitService
         string repositoryUrl, string? branch = null)
     {
         var result = new RepoValidationResult { RepositoryUrl = repositoryUrl };
+
+        // Use GitHub REST API for github.com URLs — more reliable than LibGit2Sharp for validation
+        if (repositoryUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(_settings.PersonalAccessToken))
+        {
+            return await ValidateGitHubRepositoryAsync(repositoryUrl, branch);
+        }
+
         try
         {
-            _logger.LogInformation("Validating remote repository: {Url}", repositoryUrl);
+            _logger.LogInformation("Validating remote repository via LibGit2Sharp: {Url}", repositoryUrl);
 
             IEnumerable<Reference> refs = await Task.Run(() =>
                 Repository.ListRemoteReferences(repositoryUrl,
@@ -90,11 +98,17 @@ public class GitService : IGitService
             }
         }
         catch (LibGit2SharpException ex) when (
-            ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("401", StringComparison.Ordinal))
+            ex.Message.Contains("401", StringComparison.Ordinal) ||
+            ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase))
         {
             result.Accessible = false;
-            result.Message = "Authentication failed — check your Personal Access Token in configuration.";
+            result.Message = "Authentication failed (401) — check your Personal Access Token.";
+        }
+        catch (LibGit2SharpException ex) when (
+            ex.Message.Contains("403", StringComparison.Ordinal))
+        {
+            result.Accessible = false;
+            result.Message = "Access denied (403) — your PAT may lack 'repo' scope or the repository is private.";
         }
         catch (LibGit2SharpException ex) when (
             ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
@@ -102,13 +116,129 @@ public class GitService : IGitService
             ex.Message.Contains("Repository not found", StringComparison.OrdinalIgnoreCase))
         {
             result.Accessible = false;
-            result.Message = "Repository not found or you do not have access.";
+            result.Message = "Repository not found — check the URL is correct.";
         }
         catch (Exception ex)
         {
             result.Accessible = false;
             result.Message = $"Cannot reach repository: {ex.Message}";
             _logger.LogWarning(ex, "Remote repository validation failed for {Url}", repositoryUrl);
+        }
+
+        return result;
+    }
+
+    // ── GitHub-specific validation using REST API ─────────────────────────────
+    // Avoids LibGit2Sharp credential issues — uses Bearer token directly via HttpClient
+
+    private async Task<RepoValidationResult> ValidateGitHubRepositoryAsync(
+        string repositoryUrl, string? branch)
+    {
+        var result = new RepoValidationResult { RepositoryUrl = repositoryUrl };
+
+        try
+        {
+            // Extract owner/repo from URL  (handles .git suffix and trailing slashes)
+            // e.g. https://github.com/owner/repo.git  →  owner/repo
+            var uri     = new Uri(repositoryUrl.TrimEnd('/').Replace(".git", ""));
+            var parts   = uri.AbsolutePath.Trim('/').Split('/');
+            if (parts.Length < 2)
+            {
+                result.Accessible = false;
+                result.Message    = "Could not parse GitHub owner/repo from URL.";
+                return result;
+            }
+            var owner = parts[0];
+            var repo  = parts[1];
+
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.Add("User-Agent",       "DocuGenius-Validator");
+            http.DefaultRequestHeaders.Add("Authorization",    $"Bearer {_settings.PersonalAccessToken}");
+            http.DefaultRequestHeaders.Add("Accept",           "application/vnd.github+json");
+            http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+
+            // Check repo exists
+            var repoResponse = await http.GetAsync($"https://api.github.com/repos/{owner}/{repo}");
+
+            if (repoResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                result.Accessible = false;
+                result.Message    = $"Repository '{owner}/{repo}' not found on GitHub — check the URL.";
+                return result;
+            }
+
+            if (repoResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                result.Accessible = false;
+                result.Message    = "GitHub authentication failed (401) — your PAT may be expired or invalid.";
+                return result;
+            }
+
+            if (repoResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                result.Accessible = false;
+                result.Message    = "GitHub access denied (403) — your PAT needs 'repo' scope for private repositories.";
+                return result;
+            }
+
+            if (!repoResponse.IsSuccessStatusCode)
+            {
+                result.Accessible = false;
+                result.Message    = $"GitHub API returned {(int)repoResponse.StatusCode}.";
+                return result;
+            }
+
+            // Parse default branch from repo info
+            var repoJson = await repoResponse.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(repoJson);
+            result.DefaultBranch = doc.RootElement
+                .TryGetProperty("default_branch", out var db) ? db.GetString() ?? "main" : "main";
+            result.Accessible = true;
+
+            // Check branch exists (if specified)
+            if (!string.IsNullOrWhiteSpace(branch))
+            {
+                var branchResponse = await http.GetAsync(
+                    $"https://api.github.com/repos/{owner}/{repo}/branches/{Uri.EscapeDataString(branch)}");
+
+                if (branchResponse.IsSuccessStatusCode)
+                {
+                    result.BranchExists = true;
+                    result.Message      = $"Repository accessible · branch '{branch}' found";
+                }
+                else
+                {
+                    // List available branches for a helpful message
+                    var listResponse = await http.GetAsync(
+                        $"https://api.github.com/repos/{owner}/{repo}/branches?per_page=10");
+                    var available    = string.Empty;
+                    if (listResponse.IsSuccessStatusCode)
+                    {
+                        var listJson   = await listResponse.Content.ReadAsStringAsync();
+                        using var list = System.Text.Json.JsonDocument.Parse(listJson);
+                        available      = string.Join(", ", list.RootElement.EnumerateArray()
+                            .Select(b => b.TryGetProperty("name", out var n) ? n.GetString() : null)
+                            .Where(n => n != null)
+                            .Take(5)!);
+                    }
+
+                    result.BranchExists = false;
+                    result.Message      = string.IsNullOrWhiteSpace(available)
+                        ? $"Branch '{branch}' not found in '{owner}/{repo}'."
+                        : $"Branch '{branch}' not found. Available: {available}";
+                }
+            }
+            else
+            {
+                result.BranchExists = true;
+                result.Message      = $"Repository accessible · default branch: {result.DefaultBranch}";
+            }
+        }
+        catch (Exception ex)
+        {
+            result.Accessible = false;
+            result.Message    = $"Error validating GitHub repository: {ex.Message}";
+            _logger.LogWarning(ex, "GitHub validation failed for {Url}", repositoryUrl);
         }
 
         return result;
