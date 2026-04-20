@@ -1,407 +1,334 @@
 @page "/"
 @using DocuGenious.Blazor.Models
 @using DocuGenious.Blazor.Services
+@using static FileStorageService
 @inject DocumentationApiService Api
 @inject ValidationService Validator
+@inject FileStorageService Storage
 @inject IJSRuntime JS
 
 <PageTitle>Docu-Genius</PageTitle>
 
 <div class="dg-card">
 
-    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <!-- HEADER -->
     <div class="dg-header">
         <h1>🚀 Docu-Genius</h1>
         <p class="dg-subtitle">AI-powered documentation in seconds</p>
     </div>
 
-    @if (_state == UiState.Form)
-    {
-        <!-- ── Source section ──────────────────────────────────────────── -->
-        <p class="dg-section-title">Source</p>
+    <!-- SOURCE -->
+    <p class="dg-section-title">Source</p>
 
+    <div class="dg-field">
+        <label class="dg-label">Choose an option</label>
+        <select class="dg-select" @bind="_sourceType">
+            <option value="">-- Select --</option>
+            @foreach (var opt in SourceTypes.Options)
+            {
+                <option value="@opt.Value">@opt.Label</option>
+            }
+        </select>
+    </div>
+
+    @if (ShowJira)
+    {
         <div class="dg-field">
-            <label class="dg-label">Choose an option</label>
-            <select class="dg-select" @bind="_sourceType">
-                <option value="">-- Select --</option>
-                @foreach (var opt in SourceTypes.Options)
+            <label class="dg-label">JIRA Ticket ID(s)</label>
+            <div class="dg-tag-wrapper" @onclick="FocusTagInput">
+                @foreach (var tag in _ticketIds)
                 {
-                    <option value="@opt.Value">@opt.Label</option>
+                    <span class="dg-tag">
+                        @tag
+                        <button type="button" class="dg-tag-remove"
+                                @onclick="() => RemoveTicket(tag)">
+                            ✕
+                        </button>
+                    </span>
                 }
-            </select>
+                <input id="tag-input"
+                       class="dg-tag-input"
+                       placeholder="e.g. PROJ-123"
+                       @bind="_ticketInput"
+                       @bind:event="oninput"
+                       @onkeydown="HandleTagKeyDown" />
+            </div>
+            <p class="dg-hint">Press Enter or comma</p>
+        </div>
+    }
+
+    @if (ShowGit)
+    {
+        <div class="dg-field">
+            <label class="dg-label">Repository URL</label>
+            <input class="dg-input" @bind="_repoUrl" />
         </div>
 
-        @if (ShowJira)
-        {
-            <div class="dg-field">
-                <label class="dg-label">JIRA Ticket ID(s)</label>
-                <div class="dg-tag-wrapper" @onclick="FocusTagInput">
-                    @foreach (var tag in _ticketIds)
+        <div class="dg-field">
+            <label class="dg-label">Branch</label>
+            <input class="dg-input" @bind="_branch" />
+        </div>
+    }
+
+    <hr class="dg-divider" />
+
+    <!-- OUTPUT -->
+    <p class="dg-section-title">Output</p>
+
+    <div class="dg-field">
+        <label class="dg-label">Document Type</label>
+        <select class="dg-select" @bind="_docType">
+            @foreach (var opt in DocumentationTypes.Options)
+            {
+                <option value="@opt.Value">@opt.Label</option>
+            }
+        </select>
+    </div>
+
+    <div class="dg-field">
+        <label class="dg-label">Additional Context</label>
+        <textarea class="dg-textarea" @bind="_additionalContext"></textarea>
+    </div>
+
+    <div class="dg-field">
+        <label class="dg-label">File Name</label>
+        <input class="dg-input" @bind="_outputFileName" />
+    </div>
+
+    <div style="display:flex; justify-content:flex-end;">
+        <button class="dg-btn-primary"
+                @onclick="StartValidation"
+                disabled="@(!CanSubmit)">
+            ✨ Generate
+        </button>
+    </div>
+
+    <!-- FILE HISTORY GRID -->
+    @if (_files.Any())
+    {
+        <div style="margin-top:25px">
+            <p class="dg-section-title">Generated Files</p>
+
+            <table class="dg-table">
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Created On</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var f in _files)
                     {
-                        <span class="dg-tag">
-                            @tag
-                            <button type="button" class="dg-tag-remove"
-                                    @onclick="() => RemoveTicket(tag)">✕</button>
-                        </span>
+                        <tr>
+                            <td>@f.FileName</td>
+                            <td>@f.CreatedOn.ToString("dd-MMM-yyyy HH:mm")</td>
+                            <td>
+                                <button class="dg-btn-download"
+                                        @onclick="() => DownloadPdf(f.FileName)">
+                                    Download
+                                </button>
+                            </td>
+                        </tr>
                     }
-                    <input id="tag-input"
-                           class="dg-tag-input"
-                           placeholder="@(_ticketIds.Count == 0 ? "e.g. PROJ-123, PROJ-124" : "Add more...")"
-                           @bind="_ticketInput"
-                           @bind:event="oninput"
-                           @onkeydown="HandleTagKeyDown" />
-                </div>
-                <p class="dg-hint">Press Enter or comma to add each ticket ID</p>
-            </div>
-        }
-
-        @if (ShowGit)
-        {
-            <div class="dg-field">
-                <label class="dg-label">Repository URL</label>
-                <input class="dg-input" placeholder="https://github.com/org/repo.git"
-                       @bind="_repoUrl" @bind:event="oninput" />
-            </div>
-            <div class="dg-field">
-                <label class="dg-label">Branch <span style="font-weight:400;text-transform:none;color:#bbb">(optional)</span></label>
-                <input class="dg-input" placeholder="main" @bind="_branch" @bind:event="oninput" />
-            </div>
-        }
-
-        <hr class="dg-divider" />
-
-        <!-- ── Output section ─────────────────────────────────────────── -->
-        <p class="dg-section-title">Output</p>
-
-        <div class="dg-field">
-            <label class="dg-label">Document Type</label>
-            <select class="dg-select" @bind="_docType">
-                @foreach (var opt in DocumentationTypes.Options)
-                {
-                    <option value="@opt.Value">@opt.Label</option>
-                }
-            </select>
-        </div>
-
-        <div class="dg-field">
-            <label class="dg-label">Additional Context <span style="font-weight:400;text-transform:none;color:#bbb">(optional)</span></label>
-            <textarea class="dg-textarea"
-                      placeholder="Acceptance criteria, scope notes, specific areas to focus on..."
-                      @bind="_additionalContext"></textarea>
-        </div>
-
-        <div class="dg-field">
-            <label class="dg-label">Output File Name <span style="font-weight:400;text-transform:none;color:#bbb">(optional)</span></label>
-            <input class="dg-input" placeholder="@DefaultFileName" @bind="_outputFileName" />
-        </div>
-
-        <!-- ── Validation error ────────────────────────────────────────── -->
-        @if (!string.IsNullOrEmpty(_validationError))
-        {
-            <div class="dg-alert dg-alert-error">
-                <span class="dg-alert-icon">⚠️</span>
-                <span>@_validationError</span>
-            </div>
-        }
-
-        <!-- ── Submit ─────────────────────────────────────────────────── -->
-        <button class="dg-btn-primary" @onclick="StartValidation" disabled="@(!CanSubmit)">
-            ✨ Create Document
-        </button>
-    }
-
-    <!-- ── Validating state ────────────────────────────────────────────── -->
-    @if (_state == UiState.Validating)
-    {
-        <p class="dg-section-title" style="margin-bottom:12px">Validating inputs...</p>
-
-        <div class="dg-validation-list">
-            @foreach (var row in _validationRows)
-            {
-                <div class="dg-validation-row dg-vstatus-@row.Status.ToString().ToLower()">
-                    <span class="dg-vicon">@StatusIcon(row.Status)</span>
-                    <div class="dg-vtext">
-                        <span class="dg-vlabel">@row.Label</span>
-                        @if (!string.IsNullOrWhiteSpace(row.Message))
-                        {
-                            <span class="dg-vmsg">@row.Message</span>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-
-        @if (_validationDone)
-        {
-            @if (_canProceed)
-            {
-                <div class="dg-alert dg-alert-success" style="margin-top:16px">
-                    <span class="dg-alert-icon">✅</span>
-                    <span>All checks passed@(_hasWarnings ? " (with warnings)" : ""). Proceeding to generation...</span>
-                </div>
-            }
-            else
-            {
-                <div class="dg-alert dg-alert-error" style="margin-top:16px">
-                    <span class="dg-alert-icon">❌</span>
-                    <span>Validation failed. Please fix the issues above and try again.</span>
-                </div>
-                <div style="display:flex;gap:10px;margin-top:12px">
-                    <button class="dg-btn-primary" @onclick="Reset">← Fix and retry</button>
-                </div>
-            }
-        }
-    }
-
-    @if (_state == UiState.Generating)
-    {
-        <div class="dg-progress">
-            <div class="dg-spinner"></div>
-            <p class="dg-progress-label">@_progressLabel</p>
-            <p class="dg-progress-step">@_progressStep</p>
+                </tbody>
+            </table>
         </div>
     }
-
-    @if (_state == UiState.Success)
-    {
-        <div class="dg-alert dg-alert-success">
-            <span class="dg-alert-icon">✅</span>
-            <div>
-                <strong>Document generated!</strong><br />
-                <span style="font-size:0.82rem">@_result?.FileName</span>
-            </div>
-        </div>
-
-        <button class="dg-btn-download" @onclick="DownloadPdf">
-            ⬇️ Download PDF
-        </button>
-
-        <button class="dg-btn-ghost" @onclick="Reset">
-            Generate another document
-        </button>
-    }
-
-    @if (_state == UiState.Error)
-    {
-        <div class="dg-alert dg-alert-error">
-            <span class="dg-alert-icon">❌</span>
-            <div>
-                <strong>Generation failed</strong><br />
-                <span style="font-size:0.82rem;word-break:break-word">@_errorMessage</span>
-            </div>
-        </div>
-
-        <button class="dg-btn-ghost" @onclick="Reset">
-            ← Try again
-        </button>
-    }
-
-    <!-- ── Footer ─────────────────────────────────────────────────────── -->
-    <p class="dg-footer">Powered by Docu-Genius · Groq / LLaMA</p>
-    <p class="dg-footer" style="font-size:0.7rem;opacity:0.5;margin-top:2px">API: @Api.ApiBaseUrl</p>
 
 </div>
 
+<!-- POPUP -->
+@if (_showDialog)
+{
+    <div class="dg-modal-overlay">
+        <div class="dg-modal">
+
+            @if (_state == UiState.Generating)
+            {
+                <div class="dg-progress">
+                    <div class="dg-spinner"></div>
+                    <p>Generating document...</p>
+                </div>
+            }
+
+            @if (_state == UiState.Success)
+            {
+                <div class="dg-alert dg-alert-success">
+                    <strong>Document generated!</strong><br />
+                    @_result?.FileName
+                </div>
+
+                <button class="dg-btn-download" @onclick="() => DownloadPdf()">
+                    ⬇️ Download
+                </button>
+
+                <button class="dg-btn-ghost" @onclick="CloseDialog">
+                    Close
+                </button>
+            }
+
+            @if (_state == UiState.Error)
+            {
+                <div class="dg-alert dg-alert-error">
+                    @_errorMessage
+                </div>
+
+                <button class="dg-btn-ghost" @onclick="CloseDialog">
+                    Close
+                </button>
+            }
+
+        </div>
+    </div>
+}
+
+<style>
+    .dg-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 999;
+    }
+
+    .dg-modal {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        min-width: 320px;
+        text-align: center;
+    }
+
+    .dg-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .dg-table th, .dg-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+</style>
+
 @code {
-    // ── State machine ────────────────────────────────────────────────────────
-    private enum UiState { Form, Validating, Generating, Success, Error }
+
+    private enum UiState { Form, Generating, Success, Error }
     private UiState _state = UiState.Form;
 
-    // ── Form fields ──────────────────────────────────────────────────────────
-    private string _sourceType       = string.Empty;
-    private string _docType          = "FullDocumentation";
-    private string _repoUrl          = string.Empty;
-    private string _branch           = string.Empty;
-    private string _additionalContext = string.Empty;
-    private string _outputFileName   = string.Empty;
-    private string _ticketInput      = string.Empty;
-    private List<string> _ticketIds  = [];
+    private bool _showDialog = false;
 
-    // ── Validation ───────────────────────────────────────────────────────────
-    private List<ValidationRow> _validationRows = [];
-    private bool _validationDone = false;
-    private bool _canProceed     = false;
-    private bool _hasWarnings    = false;
+    private string _sourceType = "";
+    private string _docType = "FullDocumentation";
+    private string _repoUrl = "";
+    private string _branch = "";
+    private string _additionalContext = "";
+    private string _outputFileName = "";
+    private string _ticketInput = "";
+    private List<string> _ticketIds = new();
 
-    // ── Progress ─────────────────────────────────────────────────────────────
-    private string _progressLabel = "Analysing your input...";
-    private string _progressStep  = "This may take 20–60 seconds";
+    private List<FileRecord> _files = new();
 
-    // ── Results / errors ─────────────────────────────────────────────────────
     private GenerateResult? _result;
-    private string _errorMessage    = string.Empty;
-    private string _validationError = string.Empty;
+    private string _errorMessage = "";
 
-    // ── Derived UI flags ─────────────────────────────────────────────────────
     private bool ShowJira => _sourceType is "JiraOnly" or "Both";
-    private bool ShowGit  => _sourceType is "GitOnly"  or "Both";
+    private bool ShowGit => _sourceType is "GitOnly" or "Both";
 
     private bool CanSubmit =>
         !string.IsNullOrEmpty(_sourceType) &&
         (!ShowJira || _ticketIds.Count > 0 || !string.IsNullOrWhiteSpace(_ticketInput)) &&
-        (!ShowGit  || !string.IsNullOrWhiteSpace(_repoUrl));
+        (!ShowGit || !string.IsNullOrWhiteSpace(_repoUrl));
 
-    private string DefaultFileName =>
-        string.Join("_", new[]
-        {
-            _ticketIds.FirstOrDefault() ?? string.Empty,
-            !string.IsNullOrWhiteSpace(_repoUrl)
-                ? _repoUrl.TrimEnd('/').Split('/').Last().Replace(".git","")
-                : string.Empty,
-            _docType,
-            DateTime.UtcNow.ToString("yyyyMMdd")
-        }.Where(s => !string.IsNullOrWhiteSpace(s)));
-
-    private static string StatusIcon(ValidationStatus s) => s switch
+    protected override async Task OnInitializedAsync()
     {
-        ValidationStatus.Checking => "⏳",
-        ValidationStatus.Pass     => "✅",
-        ValidationStatus.Warn     => "⚠️",
-        ValidationStatus.Fail     => "❌",
-        _                         => "•"
-    };
+        _files = await Storage.GetFilesAsync() ?? new();
+    }
 
-    // ── Tag input handling ───────────────────────────────────────────────────
+    private async Task StartValidation()
+    {
+        if (!string.IsNullOrWhiteSpace(_ticketInput))
+            AddTicket();
+
+        await Generate();
+    }
+
+    private async Task Generate()
+    {
+        _showDialog = true;
+        _state = UiState.Generating;
+
+        var request = new GenerateRequest
+        {
+            SourceType = _sourceType,
+            JiraTicketIds = _ticketIds,
+            GitRepositoryUrl = ShowGit ? _repoUrl : null,
+            GitBranch = _branch,
+            DocumentationType = _docType,
+            AdditionalContext = _additionalContext,
+            OutputFileName = _outputFileName
+        };
+
+        _result = await Api.GenerateDocumentAsync(request);
+
+        if (_result.Success)
+        {
+            _state = UiState.Success;
+
+            var file = new FileRecord
+            {
+                FileName = _result.FileName,
+                CreatedOn = DateTime.Now
+            };
+
+            _files.Insert(0, file);
+            await Storage.SaveFilesAsync(_files);
+        }
+        else
+        {
+            _state = UiState.Error;
+            _errorMessage = _result.Error ?? "Error occurred";
+        }
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+        _state = UiState.Form;
+    }
+
+    private async Task DownloadPdf(string? fileName = null)
+    {
+        fileName ??= _result?.FileName;
+        if (fileName == null) return;
+
+        var bytes = await Api.DownloadPdfAsync(fileName);
+        var base64 = Convert.ToBase64String(bytes);
+
+        await JS.InvokeVoidAsync("downloadFileFromBase64",
+            base64, fileName, "application/pdf");
+    }
+
     private void HandleTagKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key is "Enter" or "," or "Tab" or " ")
-            AddTicket();
-        else if (e.Key == "Backspace" && string.IsNullOrEmpty(_ticketInput) && _ticketIds.Count > 0)
-            _ticketIds.RemoveAt(_ticketIds.Count - 1);
+        if (e.Key is "Enter" or ",") AddTicket();
     }
 
     private void AddTicket()
     {
         var val = _ticketInput.Trim().Trim(',');
-        if (!string.IsNullOrWhiteSpace(val) && !_ticketIds.Contains(val.ToUpper()))
+        if (!string.IsNullOrWhiteSpace(val))
             _ticketIds.Add(val.ToUpper());
-        _ticketInput = string.Empty;
+
+        _ticketInput = "";
     }
 
-    private void RemoveTicket(string tag) => _ticketIds.Remove(tag);
+    private void RemoveTicket(string t) => _ticketIds.Remove(t);
 
     private async Task FocusTagInput()
-        => await JS.InvokeVoidAsync("eval", "document.getElementById('tag-input')?.focus()");
-
-    // ── Validation → Generate pipeline ───────────────────────────────────────
-    private async Task StartValidation()
-    {
-        _validationError = string.Empty;
-
-        // Flush typed-but-not-entered ticket
-        if (!string.IsNullOrWhiteSpace(_ticketInput))
-            AddTicket();
-
-        if (!CanSubmit)
-        {
-            _validationError = ShowJira && _ticketIds.Count == 0
-                ? "Please enter at least one JIRA ticket ID."
-                : "Please enter a repository URL.";
-            return;
-        }
-
-        _state           = UiState.Validating;
-        _validationRows  = [];
-        _validationDone  = false;
-        _canProceed      = false;
-        _hasWarnings     = false;
-        StateHasChanged();
-
-        var (rows, canProceed) = await Validator.ValidateAsync(
-            _sourceType,
-            [.. _ticketIds],
-            ShowGit ? _repoUrl.Trim() : null,
-            string.IsNullOrWhiteSpace(_branch) ? null : _branch.Trim(),
-            string.IsNullOrWhiteSpace(_outputFileName) ? null : _outputFileName.Trim(),
-            () => { StateHasChanged(); });
-
-        _validationRows = rows;
-        _canProceed     = canProceed;
-        _hasWarnings    = rows.Any(r => r.Status == ValidationStatus.Warn);
-        _validationDone = true;
-        StateHasChanged();
-
-        if (canProceed)
-        {
-            // Small pause so user sees the green pass summary before generation starts
-            await Task.Delay(900);
-            await Generate();
-        }
-    }
-
-    // ── Generate ─────────────────────────────────────────────────────────────
-    private async Task Generate()
-    {
-        _state = UiState.Generating;
-        SetProgressStep(1);
-
-        var request = new GenerateRequest
-        {
-            SourceType        = _sourceType,
-            JiraTicketIds     = [.. _ticketIds],
-            GitRepositoryUrl  = ShowGit ? _repoUrl.Trim() : null,
-            GitBranch         = string.IsNullOrWhiteSpace(_branch) ? null : _branch.Trim(),
-            DocumentationType = _docType,
-            AdditionalContext = string.IsNullOrWhiteSpace(_additionalContext) ? null : _additionalContext.Trim(),
-            OutputFileName    = string.IsNullOrWhiteSpace(_outputFileName) ? DefaultFileName : _outputFileName.Trim()
-        };
-
-        SetProgressStep(2);
-        _result = await Api.GenerateDocumentAsync(request);
-
-        if (_result.Success)
-            _state = UiState.Success;
-        else
-        {
-            _errorMessage = _result.Error ?? "An unknown error occurred.";
-            _state = UiState.Error;
-        }
-    }
-
-    private void SetProgressStep(int step)
-    {
-        (_progressLabel, _progressStep) = step switch
-        {
-            1 => ("Fetching data...",       "Connecting to JIRA / Git"),
-            2 => ("Analysing with Groq...", "LLaMA is reading your content"),
-            3 => ("Generating PDF...",      "Building your document"),
-            _ => ("Working...",             "Please wait")
-        };
-        StateHasChanged();
-    }
-
-    // ── Download ─────────────────────────────────────────────────────────────
-    private async Task DownloadPdf()
-    {
-        if (_result?.FileName is null) return;
-
-        var bytes = await Api.DownloadPdfAsync(_result.FileName);
-        if (bytes is null)
-        {
-            _errorMessage = "Could not download the PDF. Please try again.";
-            return;
-        }
-
-        var base64 = Convert.ToBase64String(bytes);
-        await JS.InvokeVoidAsync("downloadFileFromBase64", base64, _result.FileName, "application/pdf");
-    }
-
-    // ── Reset ─────────────────────────────────────────────────────────────────
-    private void Reset()
-    {
-        _state             = UiState.Form;
-        _sourceType        = string.Empty;
-        _docType           = "FullDocumentation";
-        _repoUrl           = string.Empty;
-        _branch            = string.Empty;
-        _additionalContext = string.Empty;
-        _outputFileName    = string.Empty;
-        _ticketInput       = string.Empty;
-        _ticketIds         = [];
-        _result            = null;
-        _errorMessage      = string.Empty;
-        _validationError   = string.Empty;
-        _validationRows    = [];
-        _validationDone    = false;
-    }
+        => await JS.InvokeVoidAsync("eval",
+            "document.getElementById('tag-input')?.focus()");
 }
