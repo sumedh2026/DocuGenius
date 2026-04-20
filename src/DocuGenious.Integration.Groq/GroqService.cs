@@ -172,28 +172,60 @@ public class GroqService : IGroqService
         }
     }
 
-    private static AnalysisResult ParseAnalysisResult(string rawContent, DocumentationType docType, string sourceInfo)
+    // Reuse a single options instance — creating JsonSerializerOptions inline is expensive
+    // and can trigger validation issues in .NET 9/10. JsonStringEnumConverter prevents
+    // enum fields (e.g. DocumentationType) from causing a JsonException.
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
+
+    private AnalysisResult ParseAnalysisResult(string rawContent, DocumentationType docType, string sourceInfo)
+    {
+        var candidates = ExtractJsonCandidates(rawContent).ToList();
 
         // Try each candidate in order — stop at the first successful parse
-        foreach (var candidate in ExtractJsonCandidates(rawContent))
+        foreach (var (candidate, index) in candidates.Select((c, i) => (c, i)))
         {
             try
             {
-                var result = JsonSerializer.Deserialize<AnalysisResult>(candidate, jsonOptions);
+                var result = JsonSerializer.Deserialize<AnalysisResult>(candidate, _jsonOptions);
                 if (result != null && HasMeaningfulContent(result))
                 {
                     result.DocumentationType = docType;
                     result.SourceInfo        = sourceInfo;
                     result.GeneratedAt       = DateTime.UtcNow;
+                    _logger.LogDebug("Groq response parsed successfully using candidate {Index}", index);
                     return result;
                 }
+
+                _logger.LogWarning(
+                    "Candidate {Index} deserialised but HasMeaningfulContent=false. " +
+                    "ExecutiveSummary='{ES}' TechnicalOverview='{TO}' Features={FC}",
+                    index,
+                    result?.ExecutiveSummary?[..Math.Min(80, result.ExecutiveSummary.Length)] ?? "(null)",
+                    result?.TechnicalOverview?[..Math.Min(80, result.TechnicalOverview.Length)] ?? "(null)",
+                    result?.Features.Count ?? 0);
             }
-            catch { /* try next candidate */ }
+            catch (JsonException jex)
+            {
+                _logger.LogWarning(
+                    "Candidate {Index} failed JSON deserialisation: {Msg} (path: {Path})",
+                    index, jex.Message, jex.Path);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Candidate {Index} threw unexpected exception", index);
+            }
         }
 
-        // Hard fallback: surface the raw response so the user sees something
+        // Hard fallback — log the raw response so it's visible in the API logs
+        _logger.LogError(
+            "All {Count} Groq response candidates failed to parse. " +
+            "Raw content (first 500 chars): {Raw}",
+            candidates.Count,
+            rawContent.Length > 500 ? rawContent[..500] + "…" : rawContent);
+
         return new AnalysisResult
         {
             ExecutiveSummary  = rawContent,
