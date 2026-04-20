@@ -27,5 +27,5 @@ var apiBase = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:60735/";
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });
 builder.Services.AddScoped<DocumentationApiService>();
 builder.Services.AddScoped<ValidationService>();
-
+builder.Services.AddSingleton<FileStorageService>();
 await builder.Build().RunAsync();
