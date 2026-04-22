@@ -392,6 +392,11 @@ public class GroqService : IGroqService
 
     /// <summary>
     /// Yields JSON string candidates from the model response, from most to least specific.
+    /// For each candidate both the raw version and a "repaired" version (with literal
+    /// newlines inside string values escaped) are tried, because llama-3.1-8b-instant
+    /// frequently emits bare \n / \r characters inside multi-line string values which
+    /// makes the JSON syntactically invalid.
+    ///
     /// Strategy 1 — raw text (model returned clean JSON)
     /// Strategy 2 — extract from ```json ... ``` fence
     /// Strategy 3 — extract from ``` ... ``` fence
@@ -401,27 +406,92 @@ public class GroqService : IGroqService
     /// </summary>
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
     {
+        // Helper: yield the candidate and, if different, its repaired variant
+        static IEnumerable<string> WithRepaired(string candidate)
+        {
+            yield return candidate;
+            var repaired = FixLiteralNewlinesInStrings(candidate);
+            if (repaired != candidate)
+                yield return repaired;
+        }
+
         var trimmed = raw.Trim();
 
-        // 1. Raw text as-is
-        yield return trimmed;
+        // 1. Raw text as-is (+ repaired)
+        foreach (var c in WithRepaired(trimmed)) yield return c;
 
         // 2. ```json ... ``` fence (Groq/LLaMA often wraps output this way)
         var jsonFence = Regex.Match(raw, @"```json\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
         if (jsonFence.Success)
-            yield return jsonFence.Groups[1].Value.Trim();
+            foreach (var c in WithRepaired(jsonFence.Groups[1].Value.Trim())) yield return c;
 
         // 3. Generic ``` ... ``` fence
         var genericFence = Regex.Match(raw, @"```\s*([\s\S]*?)\s*```");
         if (genericFence.Success)
-            yield return genericFence.Groups[1].Value.Trim();
+            foreach (var c in WithRepaired(genericFence.Groups[1].Value.Trim())) yield return c;
 
         // 4. Brace extraction — find matching top-level { ... }
         //    Walks character by character, tracking string context so that
         //    braces inside "requestBody": "{ ... }" strings are not counted.
         var extracted = ExtractTopLevelJson(raw);
         if (extracted != null && extracted != trimmed)
-            yield return extracted;
+            foreach (var c in WithRepaired(extracted)) yield return c;
+    }
+
+    /// <summary>
+    /// Repairs a JSON string where the LLM has emitted literal newline / carriage-return /
+    /// tab characters inside quoted string values (instead of the required \n / \r / \t
+    /// escape sequences).  Walks the text character-by-character, tracking whether the
+    /// cursor is inside a JSON string, and escapes any bare control characters it finds.
+    /// </summary>
+    private static string FixLiteralNewlinesInStrings(string json)
+    {
+        var sb      = new StringBuilder(json.Length + 64);
+        bool inStr  = false;
+        bool escaped = false;
+
+        foreach (var ch in json)
+        {
+            if (escaped)
+            {
+                // Whatever follows a backslash is the escape payload — emit verbatim
+                sb.Append(ch);
+                escaped = false;
+                continue;
+            }
+
+            if (ch == '\\' && inStr)
+            {
+                sb.Append(ch);
+                escaped = true;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inStr = !inStr;
+                sb.Append(ch);
+                continue;
+            }
+
+            if (inStr)
+            {
+                // Replace literal control characters with valid JSON escape sequences
+                switch (ch)
+                {
+                    case '\n': sb.Append("\\n");  break;
+                    case '\r': sb.Append("\\r");  break;
+                    case '\t': sb.Append("\\t");  break;
+                    default:   sb.Append(ch);     break;
+                }
+            }
+            else
+            {
+                sb.Append(ch);
+            }
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>

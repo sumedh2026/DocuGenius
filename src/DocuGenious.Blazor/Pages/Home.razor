@@ -103,37 +103,26 @@
         </button>
     </div>
 
-    <!-- FILE HISTORY GRID -->
+    <!-- FILE HISTORY LIST -->
     @if (_files.Any())
     {
         <div style="margin-top:25px">
             <p class="dg-section-title">Generated Files</p>
 
-            <table class="dg-table">
-                <thead>
-                    <tr>
-                        <th>File Name</th>
-                        <th>Created On</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @foreach (var f in _files)
-                    {
-                        <tr>
-                            <td>@f.FileName</td>
-                            <td>@f.CreatedOn.ToString("dd-MMM-yyyy HH:mm")</td>
-                            <td>
-                                <button class="dg-btn-download"
-                                        @onclick="() => DownloadPdf(f.FileName)">
-                                    Download
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="dg-files-list">
+                @foreach (var f in _files)
+                {
+                    <div class="dg-file-row">
+                        <span class="dg-file-icon">📄</span>
+                        <span class="dg-file-name" title="@f.FileName">@f.FileName</span>
+                        <span class="dg-file-date">@f.CreatedOn.ToString("dd MMM yyyy, HH:mm")</span>
+                        <button class="dg-btn-download"
+                                @onclick="() => DownloadPdf(f.FileName)">
+                            ⬇ Download
+                        </button>
+                    </div>
+                }
+            </div>
         </div>
     }
 
@@ -211,15 +200,44 @@
         transition: opacity 0.3s ease;
     }
 
-    .dg-table {
-        width: 100%;
-        border-collapse: collapse;
+    .dg-files-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
     }
 
-        .dg-table th, .dg-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
+    .dg-file-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+
+    .dg-file-icon {
+        flex-shrink: 0;
+        font-size: 1.1rem;
+    }
+
+    .dg-file-name {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .dg-file-date {
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        color: #6b7280;
+        white-space: nowrap;
+    }
 </style>
 
 @code {
