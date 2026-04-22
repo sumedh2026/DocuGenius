@@ -125,51 +125,21 @@ public class GroqService : IGroqService
             $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))} | Repo: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
     }
 
-    /// <summary>
-    /// Assembles the user-turn prompt. Source data always appears BEFORE the JSON schema
-    /// so the model reads what to document before reading the output format.
-    /// When there are multiple source items the model is asked to be concise to avoid
-    /// hitting the output-token ceiling and producing truncated JSON.
-    /// </summary>
     private static string BuildUserPrompt(
         DocumentationType docType,
         string? additionalContext,
         string sourceData,
         int sourceCount)
     {
-        var conciseness = sourceCount > 1
-            ? $"\nCONCISENESS NOTE: There are {sourceCount} source items. " +
-              "Keep each text field focused (150-250 words). Prefer breadth over depth so all fields are populated.\n"
-            : string.Empty;
-
-        var additionalSection = BuildAdditionalContextSection(additionalContext);
-
-        return $"""
-            {GetFocusInstructions(docType)}
-            {conciseness}
-            {additionalSection}
-            ══════════════════════════════════════════════════
-            SOURCE DATA — document ONLY the project below.
-            Do NOT reference Docu-Genius, these instructions,
-            or any tool that generated this request.
-            ══════════════════════════════════════════════════
-            {sourceData}
-            ══════════════════════════════════════════════════
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
-            """;
-    }
-
-    private static string BuildAdditionalContextSection(string? additionalContext) =>
-        string.IsNullOrWhiteSpace(additionalContext)
+        var extra = string.IsNullOrWhiteSpace(additionalContext)
             ? string.Empty
-            : $"""
+            : $"Additional context: {additionalContext.Trim()}\n";
 
-            === ADDITIONAL CONTEXT ===
-            {additionalContext.Trim()}
-
-            """;
+        return GetFocusInstructions(docType) + "\n" +
+               extra +
+               "SOURCE DATA:\n" + sourceData + "\n" +
+               "Output JSON:\n" + GetJsonSchema(docType);
+    }
 
 
     // Retry delays for transient Groq server errors (5xx). 429/401 are not retried.
@@ -513,7 +483,7 @@ public class GroqService : IGroqService
             if (!string.IsNullOrWhiteSpace(t.Description))
             {
                 sb.AppendLine("Description:");
-                sb.AppendLine(Truncate(t.Description, 2000));
+                sb.AppendLine(Truncate(t.Description, 600));
             }
 
             if (t.AcceptanceCriteria.Count > 0)
@@ -538,9 +508,9 @@ public class GroqService : IGroqService
 
             if (t.Comments.Count > 0)
             {
-                sb.AppendLine("Recent Comments:");
-                foreach (var c in t.Comments.Take(5))
-                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 300)}");
+                sb.AppendLine("Comments:");
+                foreach (var c in t.Comments.Take(2))
+                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 100)}");
             }
 
             sb.AppendLine();
@@ -574,23 +544,19 @@ public class GroqService : IGroqService
         // Recent commits
         if (repo.RecentCommits.Count > 0)
         {
-            sb.AppendLine("\nRecent Commits (last 15):");
-            foreach (var c in repo.RecentCommits.Take(15))
-            {
-                sb.AppendLine($"  [{c.Sha}] {c.Date:yyyy-MM-dd} {c.Author}: {c.Message}");
-                if (c.ChangedFiles.Count > 0)
-                    sb.AppendLine($"    Files: {string.Join(", ", c.ChangedFiles.Take(5))}");
-            }
+            sb.AppendLine("\nRecent Commits:");
+            foreach (var c in repo.RecentCommits.Take(8))
+                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {c.Message}");
         }
 
         // Source file summaries
         if (repo.Files.Count > 0)
         {
-            sb.AppendLine($"\nSource Files ({repo.Files.Count} analysed):");
-            foreach (var f in repo.Files.Where(x => x.Content != null).Take(20))
+            sb.AppendLine($"\nSource Files:");
+            foreach (var f in repo.Files.Where(x => x.Content != null).Take(8))
             {
                 sb.AppendLine($"\n--- {f.Path} ---");
-                sb.AppendLine(Truncate(f.Content!, 800));
+                sb.AppendLine(Truncate(f.Content!, 400));
             }
         }
 
@@ -607,292 +573,64 @@ public class GroqService : IGroqService
             AppendStructure(sb, child, indent + 1);
     }
 
-    // ─── Per-doc-type: focus instructions (user prompt prefix) ───────────────────
+    // ─── Per-doc-type: focus instructions (kept short to save tokens) ───────────────
 
     private static string GetFocusInstructions(DocumentationType docType) => docType switch
     {
-        DocumentationType.UserGuide => """
-            Produce a USER GUIDE for the project in the SOURCE DATA.
+        DocumentationType.UserGuide =>
+            "Write a USER GUIDE for non-technical users. Plain English, no jargon. Include step-by-step instructions, common Q&A, and troubleshooting tips.",
 
-            TARGET AUDIENCE: Non-technical end users with no programming knowledge.
-            TONE: Friendly, jargon-free. Replace every technical term with plain English.
+        DocumentationType.TechnicalDocumentation =>
+            "Write TECHNICAL DOCUMENTATION for developers. Use actual class names, methods, and config keys from SOURCE DATA. Include setup commands and configuration details.",
 
-            REQUIRED SECTIONS in the userGuide field (use ## headings):
-            ## What This Does       — benefit to the user, not technical detail
-            ## Getting Started      — what the user needs before they begin
-            ## Step-by-Step Guide   — numbered steps; describe what the user SEES at each step
-            ## Common Questions     — 3+ Q&A pairs a real user would ask
-            ## Troubleshooting      — 3+ common problems with exact solutions
+        DocumentationType.ApiDocumentation =>
+            "Write API REFERENCE for developers. Document every endpoint with method, path, request and response JSON examples from SOURCE DATA.",
 
-            FEATURES ARRAY: Name features as the user knows them. UsageExample must be a
-            realistic end-user scenario based on the SOURCE DATA (not a generic example).
+        DocumentationType.ArchitectureOverview =>
+            "Write an ARCHITECTURE OVERVIEW for senior engineers. Cover components, data flow, external integrations, and technology choices from SOURCE DATA.",
 
-            EXCLUDE: Source code, class names, API internals, deployment steps.
-            """,
-
-        DocumentationType.TechnicalDocumentation => """
-            Produce TECHNICAL DOCUMENTATION for the project in the SOURCE DATA.
-
-            TARGET AUDIENCE: Software engineers and DevOps engineers maintaining or deploying this system.
-            TONE: Precise, engineering-focused. Reference actual class names, methods, and config keys
-            from the SOURCE DATA.
-
-            REQUIRED SECTIONS:
-            - technicalOverview: system purpose, runtime environment, key design decisions, modules
-            - architectureDescription: components and relationships, data flow, integration points
-            - setupInstructions: ## Prerequisites, ## Clone & Build, ## Configuration, ## Run Locally
-              (every command listed verbatim — no vague "install dependencies")
-            - configurationGuide: every config key with name, type, example value, and effect
-
-            FEATURES ARRAY: one entry per major module found in the source.
-            API ENDPOINTS: every controller endpoint with realistic request/response examples.
-            DEPENDENCIES: every package with version and specific reason it is used.
-            """,
-
-        DocumentationType.ApiDocumentation => """
-            Produce API REFERENCE DOCUMENTATION for the project in the SOURCE DATA.
-
-            TARGET AUDIENCE: Developers integrating with this API for the first time.
-            TONE: Concise, precise, reference-style.
-
-            REQUIRED CONTENT:
-            - executiveSummary: base URL, authentication method, content-type, brief purpose
-            - technicalOverview: auth flow, common headers, standard error shape, HTTP status codes used
-
-            API ENDPOINTS ARRAY — document EVERY endpoint found in the source:
-            - method, full path, description (purpose + side effects)
-            - requestBody: complete JSON with all fields and realistic example values
-            - responseBody: success shape AND error shape with realistic values
-
-            EXCLUDE: UI instructions, business narrative, deployment steps.
-            """,
-
-        DocumentationType.ArchitectureOverview => """
-            Produce an ARCHITECTURE OVERVIEW for the project in the SOURCE DATA.
-
-            TARGET AUDIENCE: Senior engineers and architects evaluating or extending this system.
-            TONE: High-level, strategic. Name actual components from the SOURCE DATA.
-
-            REQUIRED SECTIONS in architectureDescription (use ## headings):
-            ## System Overview         — problem solved, design philosophy
-            ## Components             — every project/service, its role, its dependencies
-            ## Data Flow              — end-to-end request lifecycle with actual component names
-            ## External Integrations  — every third-party service, its purpose, its auth method
-            ## Technology Stack       — each technology, version, and WHY it was chosen
-            ## Scalability & Limits   — bottlenecks and recommended fixes
-            ## Security               — credential handling, auth gaps, recommendations
-
-            DEPENDENCIES: every library with its architectural role.
-            EXCLUDE: step-by-step user tasks, line-by-line code analysis.
-            """,
-
-        _ => """
-            Produce COMPREHENSIVE FULL DOCUMENTATION for the project in the SOURCE DATA.
-            Cover all audiences: business stakeholders, end users, developers, and architects.
-
-            REQUIRED FIELDS (all must be populated):
-            executiveSummary, technicalOverview, architectureDescription, userGuide,
-            setupInstructions, configurationGuide, features[], apiEndpoints[],
-            dependencies[], recommendations[], knownIssues[]
-
-            Balance plain-English in userGuide with precise technical detail in all other sections.
-            A developer should be able to run the system within 30 minutes from this document.
-            """
+        _ =>
+            "Write COMPREHENSIVE DOCUMENTATION covering all audiences: executive summary, technical details, user guide, setup, API endpoints, and architecture."
     };
 
-    // ─── Per-doc-type: tailored JSON schemas ──────────────────────────────────────
+    // ─── Per-doc-type: compact JSON schemas (short hints save tokens) ───────────────
 
     private static string GetJsonSchema(DocumentationType docType) => docType switch
     {
-        DocumentationType.UserGuide => """
-            {
-              "executiveSummary": "[3 plain-English sentences about the PROJECT IN THE SOURCE DATA: what it does, who uses it, the value it delivers — no technical terms]",
-              "userGuide": "[Full guide with ## headings and numbered steps drawn from the SOURCE DATA — describe what the user sees and does]",
-              "features": [
-                {
-                  "name": "[Feature name as the end user would call it]",
-                  "description": "[Plain-English benefit this feature gives the user]",
-                  "usageExample": "[Realistic scenario of a user performing this task, based on SOURCE DATA]"
-                }
-              ],
-              "recommendations": ["[Practical tip for end users based on SOURCE DATA]"],
-              "knownIssues": ["[Known limitation from SOURCE DATA with workaround]"]
-            }
-            """,
+        DocumentationType.UserGuide =>
+            """{"executiveSummary":"what/who/value","userGuide":"## sections with numbered steps","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.TechnicalDocumentation => """
-            {
-              "executiveSummary": "[3-4 sentences: purpose, tech stack, scope — all from SOURCE DATA]",
-              "technicalOverview": "[## headings covering: system purpose, project structure, request lifecycle, key design decisions — use actual names from SOURCE DATA]",
-              "architectureDescription": "[## headings covering: architecture pattern, component breakdown, data flow, external integrations — use actual names from SOURCE DATA]",
-              "setupInstructions": "[## Prerequisites\n- [tool + version from SOURCE DATA]\n\n## Clone & Build\n[actual commands]\n\n## Configuration\n[which file, which keys]\n\n## Run Locally\n[exact command and URL]]",
-              "configurationGuide": "[Every config key from SOURCE DATA: name, type, example value, what it controls]",
-              "features": [
-                {
-                  "name": "[Module or feature name from SOURCE DATA]",
-                  "description": "[Technical description using actual class/method names from SOURCE DATA]",
-                  "usageExample": "[Code snippet or command using actual field names from SOURCE DATA]"
-                }
-              ],
-              "apiEndpoints": [
-                {
-                  "method": "GET|POST|PUT|DELETE",
-                  "path": "[actual route from SOURCE DATA]",
-                  "description": "[what it does, when to call it]",
-                  "requestBody": "[valid JSON with actual fields from SOURCE DATA]",
-                  "responseBody": "[valid JSON with actual response fields from SOURCE DATA]"
-                }
-              ],
-              "dependencies": ["[PackageName vX.Y — specific reason it is used in this project]"],
-              "recommendations": ["[Specific actionable improvement based on SOURCE DATA]"],
-              "knownIssues": ["[Specific issue observed in SOURCE DATA with suggested fix]"]
-            }
-            """,
+        DocumentationType.TechnicalDocumentation =>
+            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults/effects","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.ApiDocumentation => """
-            {
-              "executiveSummary": "[Base URL, auth method, content-type, and 1-sentence purpose — all from SOURCE DATA]",
-              "technicalOverview": "[## Authentication, ## Common Headers, ## Error Response Format, ## HTTP Status Codes — all from SOURCE DATA]",
-              "apiEndpoints": [
-                {
-                  "method": "GET|POST|PUT|DELETE",
-                  "path": "[actual route from SOURCE DATA]",
-                  "description": "[purpose, side effects, auth required]",
-                  "requestBody": "[valid JSON with all actual fields and example values from SOURCE DATA]",
-                  "responseBody": "[valid JSON showing success and error shapes from SOURCE DATA]"
-                }
-              ],
-              "dependencies": ["[External service this API depends on — from SOURCE DATA]"],
-              "recommendations": ["[API design improvement based on SOURCE DATA]"],
-              "knownIssues": ["[API limitation observed in SOURCE DATA]"]
-            }
-            """,
+        DocumentationType.ApiDocumentation =>
+            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.ArchitectureOverview => """
-            {
-              "executiveSummary": "[1 paragraph: what the system is, design philosophy, core workflow, primary technology choices — from SOURCE DATA]",
-              "technicalOverview": "[## Technology Stack with versions and rationale, ## Project Dependencies, ## Runtime Environment — from SOURCE DATA]",
-              "architectureDescription": "[## System Overview, ## Components and Responsibilities, ## Data Flow, ## External Integrations, ## Scalability, ## Security — all using actual names from SOURCE DATA]",
-              "configurationGuide": "[Infrastructure config, environment settings, deployment configuration — from SOURCE DATA]",
-              "dependencies": ["[LibraryName vX.Y — architectural role in this specific project]"],
-              "recommendations": ["[Architectural improvement with rationale and effort estimate — based on SOURCE DATA]"],
-              "knownIssues": ["[Architectural weakness observed in SOURCE DATA with suggested fix]"]
-            }
-            """,
+        DocumentationType.ArchitectureOverview =>
+            """{"executiveSummary":"system/philosophy/stack","technicalOverview":"## Stack ## Dependencies ## Runtime","architectureDescription":"## Overview ## Components ## Data Flow ## Integrations ## Scalability ## Security","configurationGuide":"infra/env/deployment config","dependencies":["Library vX — architectural role"],"recommendations":[""],"knownIssues":[""]}""",
 
-        _ /* FullDocumentation */ => """
-            {
-              "executiveSummary": "[3-4 sentences for both technical and non-technical readers: what, who, stack, value — from SOURCE DATA]",
-              "technicalOverview": "[## Purpose, ## Architecture, ## Request Lifecycle, ## Technology Stack — from SOURCE DATA]",
-              "architectureDescription": "[## Components, ## Data Flow, ## External Services, ## Scalability & Security — from SOURCE DATA]",
-              "userGuide": "[Plain-English guide with ## headings and numbered steps — from SOURCE DATA]",
-              "setupInstructions": "[## Prerequisites, ## Clone & Build, ## Configure, ## Run — actual commands from SOURCE DATA]",
-              "configurationGuide": "[Every config key from SOURCE DATA: name, type, example, effect]",
-              "features": [
-                {
-                  "name": "[Feature name from SOURCE DATA]",
-                  "description": "[Technical + user-facing description using SOURCE DATA]",
-                  "usageExample": "[Concrete example from SOURCE DATA]"
-                }
-              ],
-              "apiEndpoints": [
-                {
-                  "method": "GET|POST|PUT|DELETE",
-                  "path": "[actual path from SOURCE DATA]",
-                  "description": "[purpose and side effects]",
-                  "requestBody": "[valid JSON with actual fields from SOURCE DATA]",
-                  "responseBody": "[valid JSON with actual response from SOURCE DATA]"
-                }
-              ],
-              "dependencies": ["[PackageName vX.Y — purpose in this project]"],
-              "recommendations": ["[Specific improvement based on SOURCE DATA]"],
-              "knownIssues": ["[Specific issue from SOURCE DATA with fix]"]
-            }
-            """
+        _ /* FullDocumentation */ =>
+            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Services ## Security","userGuide":"## sections with steps","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
     };
 
-    // ─── System prompt (role + output rules) ─────────────────────────────────────
+    // ─── System prompt (concise — every token counts on free tier) ──────────────────
 
     private static string GetSystemPrompt(DocumentationType docType)
     {
         var role = docType switch
         {
-            DocumentationType.UserGuide =>
-                "You are a friendly technical writer creating documentation for non-technical business users. " +
-                "You never use programming or technical jargon. Write as if explaining to someone who has " +
-                "never seen source code — describe what the user sees and does, not how it is built.",
-
-            DocumentationType.TechnicalDocumentation =>
-                "You are a senior software engineer and technical writer creating internal developer documentation. " +
-                "Be precise, reference the actual class names, method signatures, file paths, and configuration " +
-                "keys visible in the source data. Assume the reader can read code and wants depth, not generalities.",
-
-            DocumentationType.ApiDocumentation =>
-                "You are an API documentation specialist creating a reference guide developers can use to " +
-                "integrate immediately. Document every endpoint found in the source with complete, realistic " +
-                "JSON request and response examples — not generic placeholders.",
-
-            DocumentationType.ArchitectureOverview =>
-                "You are a principal software architect creating an architecture overview for senior engineers " +
-                "and tech leads. Name actual components, services, databases, and communication channels from " +
-                "the source. Explain design decisions, trade-offs, and how the pieces fit together.",
-
-            _ =>
-                "You are an expert technical writer creating comprehensive documentation for a mixed audience " +
-                "of business users and developers. Keep user-facing sections jargon-free and step-by-step; " +
-                "keep technical sections precise, deep, and referencing actual source details."
+            DocumentationType.UserGuide             => "You are a technical writer for non-technical users.",
+            DocumentationType.TechnicalDocumentation => "You are a senior software engineer writing developer docs.",
+            DocumentationType.ApiDocumentation      => "You are an API documentation specialist.",
+            DocumentationType.ArchitectureOverview  => "You are a principal software architect.",
+            _                                        => "You are a technical writer covering all audiences."
         };
 
-        return role + """
-
-
-            ══════════════════════════════════════════════════════
-            CRITICAL: SOURCE DATA PRIMACY
-            ══════════════════════════════════════════════════════
-            You will receive SOURCE DATA (JIRA tickets and/or a Git repository).
-            You MUST document ONLY that project. Do NOT document Docu-Genius, this
-            prompt, or any tool that sent this request. Every fact you write must
-            come from the SOURCE DATA provided in the user message.
-
-            ══════════════════════════════════════════════════════
-            CONTENT QUALITY STANDARDS
-            ══════════════════════════════════════════════════════
-
-            1. SPECIFICITY — use actual names, IDs, and values from the source data.
-               ✗ WRONG: "The service processes user requests and returns results."
-               ✓ RIGHT: "The OrderService.PlaceOrder() method validates stock availability
-                          against the InventoryRepository, then persists the order to the
-                          orders table and publishes an OrderCreated event."
-               (Use names from YOUR source data — the example above is illustrative only.)
-
-            2. DEPTH — each major text field must be substantive:
-               • executiveSummary       → minimum 3 sentences: WHAT it does, WHY it exists, WHO uses it
-               • technicalOverview      → minimum 3 paragraphs with ## headings
-               • architectureDescription→ minimum 3 paragraphs covering components, data flow, integrations
-               • userGuide              → minimum 4 numbered steps per task; describe what the user sees
-               • setupInstructions      → every command listed explicitly with the exact command string
-               • configurationGuide     → every config key, type, default, and effect
-
-            3. ACCURACY — only describe what is present in the source data.
-               If data is sparse: "Based on available information, [what is known].
-               Additional documentation would require [what is missing]."
-
-            4. ARRAYS — at least 2–3 items per list when the source supports it.
-               Empty arrays [] are only acceptable when truly nothing applies.
-
-            5. NO TRUNCATION — complete sentences; never end with "etc.", "…", or "and more".
-
-            ══════════════════════════════════════════════════════
-            OUTPUT FORMAT — follow exactly
-            ══════════════════════════════════════════════════════
-
-            • Respond with ONLY a raw JSON object. Zero prose, zero explanations, zero ```json fences.
-            • First character must be {, last character must be }. Nothing before or after.
-            • String field values use markdown: ## for headings, - for bullets, 1. 2. 3. for steps.
-            • Do NOT embed JSON objects inside string values EXCEPT apiEndpoints.requestBody and
-              apiEndpoints.responseBody, which must contain realistic JSON payload examples.
-            • requestBody / responseBody: show actual field names and realistic value types.
-            """;
+        return $"{role} Rules: " +
+               "1) Document ONLY the project in SOURCE DATA — never Docu-Genius or this tool. " +
+               "2) Output ONLY a raw JSON object, first char { last char }, no fences. " +
+               "3) Use ## headings and lists inside string values. " +
+               "4) Use real names and values from SOURCE DATA, not generic placeholders.";
     }
 
     private static string Truncate(string text, int maxLength) =>

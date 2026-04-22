@@ -30,7 +30,7 @@ public class GroqSettings
     /// llama-3.3-70b-versatile — highest quality but only 6 K TPM free tier (~200 tok/s, often throttled).
     /// </summary>
     public string Model { get; set; } = "llama-3.1-8b-instant";
-    public int MaxTokens { get; set; } = 6000;
+    public int MaxTokens { get; set; } = 3000;
     public string BaseUrl { get; set; } = "https://api.groq.com/openai/v1";
     /// <summary>
     /// Absolute ceiling (seconds) for a single Groq streaming call.
