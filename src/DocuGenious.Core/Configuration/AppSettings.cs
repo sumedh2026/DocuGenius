@@ -29,10 +29,11 @@ public class GroqSettings
     public int MaxTokens { get; set; } = 6000;
     public string BaseUrl { get; set; } = "https://api.groq.com/openai/v1";
     /// <summary>
-    /// Seconds before an individual Groq API call is cancelled.
-    /// Default 120 s. Increase for very large documents or slow networks.
+    /// Absolute ceiling (seconds) for a single Groq streaming call.
+    /// With streaming the network timeout resets per chunk, so this is only
+    /// reached if Groq stops sending data entirely. Default 300 s (5 min).
     /// </summary>
-    public int TimeoutSeconds { get; set; } = 120;
+    public int TimeoutSeconds { get; set; } = 300;
 }
 
 public class OutputSettings

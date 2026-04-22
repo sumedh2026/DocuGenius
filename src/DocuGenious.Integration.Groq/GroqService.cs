@@ -27,12 +27,13 @@ public class GroqService : IGroqService
                 "Groq API key is not configured. Please set Groq:ApiKey in appsettings.json.");
 
         // The OpenAI .NET SDK supports custom endpoints — Groq exposes an OpenAI-compatible API.
-        // NetworkTimeout caps each individual HTTP call so a slow Groq response never hangs
-        // the whole API indefinitely. The value comes from Groq:TimeoutSeconds in appsettings.
+        // NetworkTimeout is set to 10 minutes here so the SDK's own HttpClient never
+        // interferes with a long streaming response. The actual per-call absolute limit is
+        // controlled by the CancellationToken created from Groq:TimeoutSeconds (default 300 s).
         var clientOptions = new OpenAIClientOptions
         {
             Endpoint       = new Uri(_settings.BaseUrl),
-            NetworkTimeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds)
+            NetworkTimeout = TimeSpan.FromMinutes(10)
         };
         var groqClient = new OpenAIClient(new ApiKeyCredential(_settings.ApiKey), clientOptions);
         _chatClient = groqClient.GetChatClient(_settings.Model);
@@ -185,8 +186,6 @@ public class GroqService : IGroqService
 
         var options = new ChatCompletionOptions
         {
-            // Use the configured value (default 6000). Keeping this reasonable avoids
-            // very slow Groq responses that cause client-side timeouts.
             MaxOutputTokenCount = _settings.MaxTokens,
             // 0.4 gives deterministic output while allowing natural language variation
             Temperature = 0.4f
@@ -194,22 +193,29 @@ public class GroqService : IGroqService
 
         for (int attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
         {
-            // Fresh token per attempt so each call has the full timeout budget
+            // Absolute ceiling per attempt. With streaming the network timer resets on
+            // every received chunk, so this only fires if Groq stops sending entirely.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
 
             try
             {
                 _logger.LogInformation(
-                    "Calling Groq (attempt {Attempt}/{Max}, docType={DocType}, timeout={Timeout}s)...",
-                    attempt + 1, RetryDelaysMs.Length + 1, docType, _settings.TimeoutSeconds);
+                    "Calling Groq streaming (attempt {Attempt}/{Max}, docType={DocType}, maxTokens={Tokens})...",
+                    attempt + 1, RetryDelaysMs.Length + 1, docType, _settings.MaxTokens);
 
-                var response = await _chatClient.CompleteChatAsync(messages, options, cts.Token);
-                var content  = response.Value.Content[0].Text;
+                // ── Streaming call ──────────────────────────────────────────────
+                // Tokens stream back as they are generated, so no single "wait for
+                // the whole response" hang. Each received chunk resets the read timer.
+                var sb = new StringBuilder();
+                await foreach (var update in
+                    _chatClient.CompleteChatStreamingAsync(messages, options, cts.Token))
+                {
+                    foreach (var part in update.ContentUpdate)
+                        sb.Append(part.Text);
+                }
 
-                _logger.LogInformation(
-                    "Groq responded — {Chars} chars, finish={Finish}",
-                    content.Length,
-                    response.Value.FinishReason);
+                var content = sb.ToString();
+                _logger.LogInformation("Groq stream complete — {Chars} chars", content.Length);
 
                 var result = ParseAnalysisResult(content, docType, sourceInfo);
                 ValidateOutputQuality(result, docType);
@@ -217,16 +223,16 @@ public class GroqService : IGroqService
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
-                // Our own timeout fired — surface a clear message; no point retrying
+                // Absolute ceiling reached — no point retrying a hung model
                 throw new InvalidOperationException(
-                    $"Groq did not respond within {_settings.TimeoutSeconds} seconds. " +
-                    "Try increasing Groq:TimeoutSeconds in appsettings.json or reduce Groq:MaxTokens.");
+                    $"Groq stopped sending data after {_settings.TimeoutSeconds} seconds. " +
+                    "Try increasing Groq:TimeoutSeconds or reducing Groq:MaxTokens in appsettings.json.");
             }
             catch (ClientResultException ex) when (ex.Status == 429)
             {
-                // Quota exhausted — no point retrying
+                // Rate limit exhausted — no point retrying immediately
                 throw new InvalidOperationException(
-                    "Groq quota exhausted. Check your plan at https://console.groq.com", ex);
+                    "Groq rate limit reached. Wait a moment and try again, or check your plan at https://console.groq.com", ex);
             }
             catch (ClientResultException ex) when (ex.Status == 401)
             {
@@ -244,9 +250,9 @@ public class GroqService : IGroqService
             }
             catch (Exception ex) when (ex is not InvalidOperationException && attempt < RetryDelaysMs.Length)
             {
-                // Network / timeout — retry
+                // Network blip — retry
                 _logger.LogWarning(ex,
-                    "Groq call failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
+                    "Groq stream failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
                     attempt + 1, ex.GetType().Name, RetryDelaysMs[attempt]);
                 await Task.Delay(RetryDelaysMs[attempt]);
             }
@@ -254,9 +260,15 @@ public class GroqService : IGroqService
 
         // Final attempt — let any exception propagate naturally
         using var finalCts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
-        var finalResponse = await _chatClient.CompleteChatAsync(messages, options, finalCts.Token);
-        var finalContent  = finalResponse.Value.Content[0].Text;
-        var finalResult   = ParseAnalysisResult(finalContent, docType, sourceInfo);
+        var finalSb = new StringBuilder();
+        await foreach (var update in
+            _chatClient.CompleteChatStreamingAsync(messages, options, finalCts.Token))
+        {
+            foreach (var part in update.ContentUpdate)
+                finalSb.Append(part.Text);
+        }
+        var finalContent = finalSb.ToString();
+        var finalResult  = ParseAnalysisResult(finalContent, docType, sourceInfo);
         ValidateOutputQuality(finalResult, docType);
         return finalResult;
     }
