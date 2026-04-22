@@ -385,7 +385,18 @@
             await Generate();
         // else: stay in Validating state — user sees the failure rows + Close button
     }
-
+    private void clear()
+    {
+        _sourceType = "";
+        _ticketInput = "";
+        _repoUrl = "";
+        _branch = "";
+        _docType = "FullDocumentation";
+        _additionalContext = "";
+        _outputFileName = "";
+        _ticketIds = [];
+		StateHasChanged();
+    }
     private async Task Generate()
     {
         _showDialog      = true;
