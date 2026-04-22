@@ -244,7 +244,11 @@ public class JiraService : IJiraService
                     .ToList();
 
                 if (messages.Count > 0)
-                    return string.Join(" ", messages);
+                    return string.Join(" ", messages)
+                        .Replace("Issue does not exist", "JIRA Ticket does not exist",
+                                 StringComparison.OrdinalIgnoreCase)
+                        .Replace("Issue ", "JIRA Ticket ",
+                                 StringComparison.OrdinalIgnoreCase);
             }
 
             // Fallback: some JIRA errors use a top-level "message" field
