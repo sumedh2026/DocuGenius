@@ -65,10 +65,26 @@ public class JiraService : IJiraService
     {
         _logger.LogInformation("Fetching JIRA ticket: {TicketId}", ticketId);
 
-        var issue = await _jiraClient.Issues.GetIssueAsync(ticketId);
+        Atlassian.Jira.Issue issue;
+        try
+        {
+            issue = await _jiraClient.Issues.GetIssueAsync(ticketId);
+        }
+        catch (Exception ex)
+        {
+            // The Atlassian SDK wraps JIRA API errors in generic exceptions and
+            // embeds the raw JSON body in the message, e.g.:
+            //   "Response Content: {"errorMessages":["Issue does not exist or you
+            //    do not have permission to see it."],"errors":{}}"
+            // Parse that JSON so callers always get a plain English sentence.
+            var friendly = ExtractJiraApiError(ex.Message);
+            _logger.LogWarning("JIRA SDK threw while fetching {TicketId}: {Msg}", ticketId, ex.Message);
+            throw new KeyNotFoundException(
+                friendly ?? $"Ticket '{ticketId}' was not found or could not be accessed.", ex);
+        }
 
         if (issue == null)
-            throw new KeyNotFoundException($"JIRA ticket '{ticketId}' not found.");
+            throw new KeyNotFoundException($"JIRA ticket '{ticketId}' was not found.");
 
         var comments = await issue.GetCommentsAsync();
 
@@ -198,6 +214,47 @@ public class JiraService : IJiraService
         }
 
         return subTasks;
+    }
+
+    /// <summary>
+    /// The Atlassian SDK embeds the raw JIRA REST response in exception messages.
+    /// This helper finds the JSON fragment and extracts the first human-readable
+    /// entry from the <c>errorMessages</c> array (JIRA's standard error format).
+    /// Returns null if the message contains no parseable JSON error.
+    /// </summary>
+    private static string? ExtractJiraApiError(string exceptionMessage)
+    {
+        // Locate the start of the JSON object the SDK includes in the message
+        var jsonStart = exceptionMessage.IndexOf('{');
+        if (jsonStart < 0) return null;
+
+        try
+        {
+            var json = exceptionMessage[jsonStart..];
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Standard JIRA error shape: { "errorMessages": ["..."], "errors": {} }
+            if (root.TryGetProperty("errorMessages", out var arr) &&
+                arr.ValueKind == JsonValueKind.Array)
+            {
+                var messages = arr.EnumerateArray()
+                    .Select(el => el.GetString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+
+                if (messages.Count > 0)
+                    return string.Join(" ", messages);
+            }
+
+            // Fallback: some JIRA errors use a top-level "message" field
+            if (root.TryGetProperty("message", out var msg) &&
+                msg.ValueKind == JsonValueKind.String)
+                return msg.GetString();
+        }
+        catch { /* not parseable JSON — fall through and return null */ }
+
+        return null;
     }
 
     private static List<string> ExtractAcceptanceCriteria(string description)
