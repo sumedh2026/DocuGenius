@@ -195,6 +195,22 @@ html, body {
     box-shadow: 0 4px 18px rgba(102,126,234,0.4);
     margin-top: 8px;
 }
+/* ── secndary button ──────────────────────────────────────────────────────── */
+.dg-btn-secondary {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 18px rgba(102,126,234,0.4);
+    margin-top: 8px;
+}
+
 
 .dg-btn-primary:hover:not(:disabled) {
     opacity: 0.91;

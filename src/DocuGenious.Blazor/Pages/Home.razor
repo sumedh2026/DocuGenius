@@ -94,8 +94,11 @@
         <label class="dg-label">File Name</label>
         <input class="dg-input" @bind="_outputFileName" />
     </div>
-
-    <div style="display:flex; justify-content:flex-end;">
+    <div style="display:flex; justify-content:flex-end;" class="mx-2">
+         <button class="dg-btn-secondary"
+                @onclick="clear">
+             Clear
+        </button>
         <button class="dg-btn-primary"
                 @onclick="StartValidation"
                 disabled="@(!CanSubmit)">
