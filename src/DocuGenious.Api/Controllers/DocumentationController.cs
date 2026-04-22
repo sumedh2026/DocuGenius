@@ -69,14 +69,21 @@ public class DocumentationController : ControllerBase
                 _logger.LogInformation("Fetching {Count} JIRA ticket(s)...", request.JiraTicketIds.Count);
                 tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
             }
-            if(request.DocumentationType== DocumentationType.UserGuide)
-            {
-                _logger.LogInformation("Filtering tickets for User Guide...");
-                tickets = tickets?.Where(t => t.Status.Contains("completed")).ToList();
+			if (request.DocumentationType == DocumentationType.UserGuide)
+			{
+				_logger.LogInformation("Filtering tickets for User Guide...");
 
-                return ValidationProblem(  
-					detail: "User Guide documentation typically only includes completed tickets. Please review the filtered list of tickets and regenerate if necessary."
-				);
+				var hasCompletedTickets = tickets != null &&
+										  tickets.Any(t =>
+											  t.Status == null ||
+											  !t.Status.Contains("completed", StringComparison.OrdinalIgnoreCase));
+
+				if (hasCompletedTickets)
+				{
+					return ValidationProblem(
+						detail: "User Guide documentation typically only includes completed tickets. Please review the filtered list of tickets and regenerate if necessary."
+					);
+				}
 			}
 			// Step 2: Fetch Git repository
 			if (request.SourceType is SourceType.GitOnly or SourceType.Both)
