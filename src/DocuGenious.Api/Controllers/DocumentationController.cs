@@ -67,6 +67,16 @@ public class DocumentationController : ControllerBase
             {
                 _logger.LogInformation("Fetching {Count} JIRA ticket(s)...", request.JiraTicketIds.Count);
                 tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
+
+                // Guard: if every ticket failed the service throws, but defend here too so
+                // we never send empty source data to Groq (which causes hallucinated content).
+                if (tickets.Count == 0)
+                    return BadRequest(new
+                    {
+                        message = $"Could not fetch any of the requested JIRA ticket(s): " +
+                                  $"{string.Join(", ", request.JiraTicketIds)}. " +
+                                  "Please verify the ticket IDs exist and that your JIRA credentials have access."
+                    });
             }
 
             // Step 2: Fetch Git repository

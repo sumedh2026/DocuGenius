@@ -109,9 +109,11 @@ public class JiraService : IJiraService
 
     public async Task<List<Core.Models.JiraTicket>> GetTicketsAsync(IEnumerable<string> ticketIds)
     {
-        var tickets = new List<Core.Models.JiraTicket>();
+        var idList    = ticketIds.ToList();
+        var tickets   = new List<Core.Models.JiraTicket>();
+        var failedIds = new List<string>();
 
-        foreach (var id in ticketIds)
+        foreach (var id in idList)
         {
             try
             {
@@ -119,8 +121,26 @@ public class JiraService : IJiraService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch ticket {TicketId}", id);
+                _logger.LogError(ex, "Failed to fetch ticket {TicketId}: {Message}", id, ex.Message);
+                failedIds.Add(id);
             }
+        }
+
+        if (tickets.Count > 0 && failedIds.Count > 0)
+        {
+            // Partial success — proceed with what we have but warn so it shows up in logs
+            _logger.LogWarning(
+                "Partial JIRA fetch: {SuccessCount} succeeded, {FailCount} failed ({FailedIds}). " +
+                "Continuing with the tickets that were fetched.",
+                tickets.Count, failedIds.Count, string.Join(", ", failedIds));
+        }
+        else if (tickets.Count == 0 && failedIds.Count > 0)
+        {
+            // Every requested ticket failed — surface a clear error instead of sending
+            // empty source data to Groq, which would cause hallucinated content.
+            throw new InvalidOperationException(
+                $"Could not fetch any of the requested JIRA ticket(s): {string.Join(", ", failedIds)}. " +
+                "Please verify the ticket IDs exist and that your JIRA credentials have access to them.");
         }
 
         return tickets;
