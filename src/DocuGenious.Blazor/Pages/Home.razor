@@ -94,13 +94,20 @@
         <label class="dg-label">File Name</label>
         <input class="dg-input" @bind="_outputFileName" />
     </div>
+    <div class="mx-2"
+         style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+    
+        <button class="dg-btn-secondary"
+                @onclick="clear">
+            Clear
+        </button>
 
-    <div style="display:flex; justify-content:flex-end;">
         <button class="dg-btn-primary"
                 @onclick="StartValidation"
                 disabled="@(!CanSubmit)">
             ✨ Generate
         </button>
+
     </div>
 
     <!-- FILE HISTORY LIST -->
@@ -299,7 +306,17 @@
 
         await Generate();
     }
-
+    private void clear()
+    {
+        _sourceType = "";
+        _ticketInput = "";
+        _repoUrl = "";
+        _branch = "";
+        _docType = "";
+        _additionalContext = "";
+        _outputFileName = "";
+        _ticketIds = [];
+    }
     private async Task Generate()
     {
         _showDialog      = true;

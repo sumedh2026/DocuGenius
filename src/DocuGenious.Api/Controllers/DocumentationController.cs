@@ -93,9 +93,24 @@ public class DocumentationController : ControllerBase
 
                 Status($"✅ Fetched {tickets.Count} JIRA ticket{(tickets.Count == 1 ? "" : "s")} successfully");
             }
+			if (request.DocumentationType == DocumentationType.UserGuide)
+			{
+				_logger.LogInformation("Filtering tickets for User Guide...");
 
-            // Step 2: Fetch Git repository
-            if (request.SourceType is SourceType.GitOnly or SourceType.Both)
+				var hasCompletedTickets = tickets != null &&
+										  tickets.Any(t =>
+											  t.Status == null ||
+											  !t.Status.Contains("completed", StringComparison.OrdinalIgnoreCase));
+
+				if (hasCompletedTickets)
+				{
+					return ValidationProblem(
+						detail: "User Guide documentation typically only includes completed tickets. Please review the filtered list of tickets and regenerate if necessary."
+					);
+				}
+			}
+			// Step 2: Fetch Git repository
+			if (request.SourceType is SourceType.GitOnly or SourceType.Both)
             {
                 if (!string.IsNullOrWhiteSpace(request.GitRepositoryUrl))
                 {
