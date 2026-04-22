@@ -25,7 +25,11 @@ public class GitSettings
 public class GroqSettings
 {
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "llama-3.3-70b-versatile";
+    /// <summary>
+    /// llama-3.1-8b-instant  — fast (30 K TPM free tier, ~1000 tok/s).  Recommended default.
+    /// llama-3.3-70b-versatile — highest quality but only 6 K TPM free tier (~200 tok/s, often throttled).
+    /// </summary>
+    public string Model { get; set; } = "llama-3.1-8b-instant";
     public int MaxTokens { get; set; } = 6000;
     public string BaseUrl { get; set; } = "https://api.groq.com/openai/v1";
     /// <summary>
