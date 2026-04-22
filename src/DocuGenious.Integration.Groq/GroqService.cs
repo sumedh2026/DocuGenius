@@ -68,15 +68,11 @@ public class GroqService : IGroqService
         _logger.LogInformation("Analysing {Count} JIRA ticket(s) with Groq...", tickets.Count);
 
         var ticketContext = BuildJiraContext(tickets);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
-            === JIRA TICKETS ===
-            {ticketContext}
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
-            """;
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: $"=== JIRA TICKETS ===\n{ticketContext}",
+            sourceCount: tickets.Count);
 
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))}");
@@ -88,15 +84,11 @@ public class GroqService : IGroqService
         _logger.LogInformation("Analysing Git repository at {Path} with Groq...", repoInfo.RepositoryPath);
 
         var repoContext = BuildGitContext(repoInfo);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
-            === GIT REPOSITORY ===
-            {repoContext}
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
-            """;
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: $"=== GIT REPOSITORY ===\n{repoContext}",
+            sourceCount: 1);
 
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"Repository: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
@@ -109,9 +101,7 @@ public class GroqService : IGroqService
 
         var ticketContext = BuildJiraContext(tickets);
         var repoContext   = BuildGitContext(repoInfo);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
+        var combined = $"""
             The JIRA tickets define the requirements; the Git repository shows the implementation.
 
             === JIRA TICKETS ===
@@ -119,13 +109,52 @@ public class GroqService : IGroqService
 
             === GIT REPOSITORY ===
             {repoContext}
+            """;
+
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: combined,
+            sourceCount: tickets.Count + 1);
+
+        return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
+            $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))} | Repo: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
+    }
+
+    /// <summary>
+    /// Assembles the user-turn prompt. Source data always appears BEFORE the JSON schema
+    /// so the model reads what to document before reading the output format.
+    /// When there are multiple source items the model is asked to be concise to avoid
+    /// hitting the output-token ceiling and producing truncated JSON.
+    /// </summary>
+    private static string BuildUserPrompt(
+        DocumentationType docType,
+        string? additionalContext,
+        string sourceData,
+        int sourceCount)
+    {
+        var conciseness = sourceCount > 1
+            ? $"\nCONCISENESS NOTE: There are {sourceCount} source items. " +
+              "Keep each text field focused (150-250 words). Prefer breadth over depth so all fields are populated.\n"
+            : string.Empty;
+
+        var additionalSection = BuildAdditionalContextSection(additionalContext);
+
+        return $"""
+            {GetFocusInstructions(docType)}
+            {conciseness}
+            {additionalSection}
+            ══════════════════════════════════════════════════
+            SOURCE DATA — document ONLY the project below.
+            Do NOT reference Docu-Genius, these instructions,
+            or any tool that generated this request.
+            ══════════════════════════════════════════════════
+            {sourceData}
+            ══════════════════════════════════════════════════
 
             Respond with a valid JSON object following this exact schema:
             {GetJsonSchema(docType)}
             """;
-
-        return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
-            $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))} | Repo: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
     }
 
     private static string BuildAdditionalContextSection(string? additionalContext) =>
@@ -369,7 +398,9 @@ public class GroqService : IGroqService
     /// Strategy 1 — raw text (model returned clean JSON)
     /// Strategy 2 — extract from ```json ... ``` fence
     /// Strategy 3 — extract from ``` ... ``` fence
-    /// Strategy 4 — extract from first { to last } (handles any leading/trailing prose)
+    /// Strategy 4 — brace extraction: first { to the matching top-level }
+    ///              Skips braces inside quoted strings so embedded JSON examples
+    ///              (e.g. requestBody / responseBody fields) don't fool the extractor.
     /// </summary>
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
     {
@@ -388,12 +419,52 @@ public class GroqService : IGroqService
         if (genericFence.Success)
             yield return genericFence.Groups[1].Value.Trim();
 
-        // 4. Brace extraction — grab everything from first { to last }
-        //    This is the most resilient: works even when the model adds a preamble
-        var firstBrace = raw.IndexOf('{');
-        var lastBrace  = raw.LastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace)
-            yield return raw[firstBrace..(lastBrace + 1)];
+        // 4. Brace extraction — find matching top-level { ... }
+        //    Walks character by character, tracking string context so that
+        //    braces inside "requestBody": "{ ... }" strings are not counted.
+        var extracted = ExtractTopLevelJson(raw);
+        if (extracted != null && extracted != trimmed)
+            yield return extracted;
+    }
+
+    /// <summary>
+    /// Walks <paramref name="raw"/> and returns the substring from the first top-level
+    /// '{' to its matching '}', ignoring braces that appear inside quoted strings.
+    /// Returns null if no balanced pair is found.
+    /// </summary>
+    private static string? ExtractTopLevelJson(string raw)
+    {
+        int start  = -1;
+        int depth  = 0;
+        bool inStr = false;
+
+        for (int i = 0; i < raw.Length; i++)
+        {
+            var ch = raw[i];
+
+            // Toggle string mode on unescaped "
+            if (ch == '"' && (i == 0 || raw[i - 1] != '\\'))
+            {
+                inStr = !inStr;
+                continue;
+            }
+
+            if (inStr) continue;   // ignore everything inside strings
+
+            if (ch == '{')
+            {
+                if (depth == 0) start = i;
+                depth++;
+            }
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0 && start >= 0)
+                    return raw[start..(i + 1)];
+            }
+        }
+
+        return null;
     }
 
     private static bool HasMeaningfulContent(AnalysisResult r) =>
@@ -514,129 +585,91 @@ public class GroqService : IGroqService
     private static string GetFocusInstructions(DocumentationType docType) => docType switch
     {
         DocumentationType.UserGuide => """
-            Produce a USER GUIDE for this feature/product.
+            Produce a USER GUIDE for the project in the SOURCE DATA.
 
-            TARGET AUDIENCE: Non-technical end users — business users, customers, or general staff
-            with NO programming knowledge. They have never seen source code.
+            TARGET AUDIENCE: Non-technical end users with no programming knowledge.
+            TONE: Friendly, jargon-free. Replace every technical term with plain English.
 
-            TONE: Friendly, warm, jargon-free. Replace every technical term with plain English.
-            Write "click the blue Submit button" not "invoke the POST endpoint".
+            REQUIRED SECTIONS in the userGuide field (use ## headings):
+            ## What This Does       — benefit to the user, not technical detail
+            ## Getting Started      — what the user needs before they begin
+            ## Step-by-Step Guide   — numbered steps; describe what the user SEES at each step
+            ## Common Questions     — 3+ Q&A pairs a real user would ask
+            ## Troubleshooting      — 3+ common problems with exact solutions
 
-            REQUIRED SECTIONS (use ## headings in the userGuide field):
-            ## What This Does          — 2-3 sentences: benefit to the user, not technical detail
-            ## Getting Started         — prerequisites the user needs (account, access, browser)
-            ## Step-by-Step Guide      — numbered steps for every task; describe what the user SEES at each step
-            ## Common Questions        — 3+ real questions a user would ask, with clear answers
-            ## Troubleshooting         — 3+ common problems and exactly how to fix them
+            FEATURES ARRAY: Name features as the user knows them. UsageExample must be a
+            realistic end-user scenario based on the SOURCE DATA (not a generic example).
 
-            FEATURES ARRAY: Name each feature as the user knows it (e.g. "Generate a Document",
-            "Download PDF"). Describe the user benefit. UsageExample must be a realistic
-            scenario: "Sarah opens the app, selects JIRA Only, types PROJ-42, clicks Create Document,
-            then downloads the PDF in 30 seconds."
-
-            EXCLUDE: Source code, architecture, class names, API internals, deployment steps,
-            database schemas, configuration files.
+            EXCLUDE: Source code, class names, API internals, deployment steps.
             """,
 
         DocumentationType.TechnicalDocumentation => """
-            Produce TECHNICAL DOCUMENTATION for this codebase/feature.
+            Produce TECHNICAL DOCUMENTATION for the project in the SOURCE DATA.
 
-            TARGET AUDIENCE: Software engineers, DevOps engineers, and maintainers who will
-            build on, debug, or deploy this system.
-
-            TONE: Precise, dense, engineering-focused. Reference actual class names, method
-            signatures, file paths, and config keys visible in the source data.
+            TARGET AUDIENCE: Software engineers and DevOps engineers maintaining or deploying this system.
+            TONE: Precise, engineering-focused. Reference actual class names, methods, and config keys
+            from the SOURCE DATA.
 
             REQUIRED SECTIONS:
-            technicalOverview   — explain the system's purpose, runtime environment, and key design
-                                  decisions; name the actual projects/modules and their responsibilities
-            architectureDescription — describe components and their relationships; explain data flow
-                                  from API request to PDF response; list integration points
-            setupInstructions   — every command verbatim:
-                                  ## Prerequisites (SDK versions, tools)
-                                  ## Clone & Build (git clone, dotnet build, dotnet restore)
-                                  ## Configuration (which file to edit, which keys to set)
-                                  ## Running Locally (dotnet run, which port, what to open)
-            configurationGuide  — every key in appsettings.json: name, type, example value, effect
+            - technicalOverview: system purpose, runtime environment, key design decisions, modules
+            - architectureDescription: components and relationships, data flow, integration points
+            - setupInstructions: ## Prerequisites, ## Clone & Build, ## Configuration, ## Run Locally
+              (every command listed verbatim — no vague "install dependencies")
+            - configurationGuide: every config key with name, type, example value, and effect
 
-            FEATURES ARRAY: One entry per major module/service (e.g. "JIRA Integration",
-            "Groq Analysis", "PDF Generation"). Description = which classes are involved and
-            how they work. UsageExample = code snippet or curl command.
-
-            API ENDPOINTS: Document every controller endpoint found in the source with realistic
-            request/response JSON matching the actual model properties.
-
-            DEPENDENCIES: Every NuGet package with version and specific reason it is used.
+            FEATURES ARRAY: one entry per major module found in the source.
+            API ENDPOINTS: every controller endpoint with realistic request/response examples.
+            DEPENDENCIES: every package with version and specific reason it is used.
             """,
 
         DocumentationType.ApiDocumentation => """
-            Produce API REFERENCE DOCUMENTATION for this system.
+            Produce API REFERENCE DOCUMENTATION for the project in the SOURCE DATA.
 
-            TARGET AUDIENCE: Developers integrating with or consuming this API for the first time.
-            They need to be productive immediately — no guessing, no assumptions.
-
-            TONE: Concise, precise, reference-style. Every endpoint must be immediately usable.
+            TARGET AUDIENCE: Developers integrating with this API for the first time.
+            TONE: Concise, precise, reference-style.
 
             REQUIRED CONTENT:
-            executiveSummary    — base URL, authentication method, content-type, brief purpose
-            technicalOverview   — authentication flow step-by-step; common headers; standard error
-                                  response shape; rate limits if known; API versioning
+            - executiveSummary: base URL, authentication method, content-type, brief purpose
+            - technicalOverview: auth flow, common headers, standard error shape, HTTP status codes used
 
-            API ENDPOINTS ARRAY — document EVERY endpoint visible in the source code:
-            • method / path     — exact HTTP verb and full route (e.g. POST /api/documentation/generate)
-            • description       — what it does, when to call it, any side effects, auth required
-            • requestBody       — complete JSON with EVERY field, realistic example values, and
-                                  comments showing required vs optional (embed as JSON string)
-            • responseBody      — success shape AND error shape (400, 500) with realistic values
+            API ENDPOINTS ARRAY — document EVERY endpoint found in the source:
+            - method, full path, description (purpose + side effects)
+            - requestBody: complete JSON with all fields and realistic example values
+            - responseBody: success shape AND error shape with realistic values
 
-            EXCLUDE: UI/UX instructions, business narrative, deployment steps.
+            EXCLUDE: UI instructions, business narrative, deployment steps.
             """,
 
         DocumentationType.ArchitectureOverview => """
-            Produce an ARCHITECTURE OVERVIEW for this system.
+            Produce an ARCHITECTURE OVERVIEW for the project in the SOURCE DATA.
 
-            TARGET AUDIENCE: Senior engineers, architects, and tech leads who need to understand
-            the system holistically before extending, scaling, or reviewing it.
+            TARGET AUDIENCE: Senior engineers and architects evaluating or extending this system.
+            TONE: High-level, strategic. Name actual components from the SOURCE DATA.
 
-            TONE: High-level, strategic. Use diagram-description prose. Name actual services.
+            REQUIRED SECTIONS in architectureDescription (use ## headings):
+            ## System Overview         — problem solved, design philosophy
+            ## Components             — every project/service, its role, its dependencies
+            ## Data Flow              — end-to-end request lifecycle with actual component names
+            ## External Integrations  — every third-party service, its purpose, its auth method
+            ## Technology Stack       — each technology, version, and WHY it was chosen
+            ## Scalability & Limits   — bottlenecks and recommended fixes
+            ## Security               — credential handling, auth gaps, recommendations
 
-            REQUIRED SECTIONS (use ## headings in architectureDescription):
-            ## System Overview      — what problem it solves; overall design philosophy
-            ## Components           — every project/service; its role; what it owns
-            ## Data Flow            — trace a request end-to-end from UI input to PDF download
-            ## External Integrations— name actual third-party services, APIs, their purpose
-            ## Technology Stack     — each major technology, version, and WHY it was chosen
-            ## Scalability & Limits — current bottlenecks; where horizontal scaling would help
-            ## Security Considerations — credential handling, CORS, auth, known gaps
-            ## Recommendations      — top 3 architectural improvements with rationale
-
-            DEPENDENCIES: Name actual libraries with their architectural role
-            (e.g. "LibGit2Sharp 0.30 — used for local Git repo analysis and branch checkout").
-
-            EXCLUDE: Step-by-step user tasks, low-level implementation code, line-by-line analysis.
+            DEPENDENCIES: every library with its architectural role.
+            EXCLUDE: step-by-step user tasks, line-by-line code analysis.
             """,
 
         _ => """
-            Produce COMPREHENSIVE FULL DOCUMENTATION covering all audiences.
+            Produce COMPREHENSIVE FULL DOCUMENTATION for the project in the SOURCE DATA.
+            Cover all audiences: business stakeholders, end users, developers, and architects.
 
-            This document will be read by business stakeholders, end users, developers, and architects.
-            Every section must be complete and audience-appropriate.
+            REQUIRED FIELDS (all must be populated):
+            executiveSummary, technicalOverview, architectureDescription, userGuide,
+            setupInstructions, configurationGuide, features[], apiEndpoints[],
+            dependencies[], recommendations[], knownIssues[]
 
-            REQUIRED CONTENT:
-            executiveSummary        — what the system is, who uses it, and the core value it delivers
-            technicalOverview       — architecture, key components, technology stack, data flow
-            architectureDescription — components, integrations, communication patterns, scalability notes
-            userGuide               — plain-English step-by-step guide; ## sections; numbered steps
-            setupInstructions       — every command needed to clone, configure, and run locally
-            configurationGuide      — every config key with type, example value, and effect
-            features[]              — every feature with a user-friendly name, description, and example
-            apiEndpoints[]          — every endpoint with realistic request/response JSON
-            dependencies[]          — every package with version and purpose
-            recommendations[]       — at least 5 actionable improvement suggestions
-            knownIssues[]           — real limitations and technical debt observed in the source
-
-            Quality bar: a developer reading this should be able to run the system locally within
-            30 minutes. A non-technical manager should understand what it does in 2 minutes.
+            Balance plain-English in userGuide with precise technical detail in all other sections.
+            A developer should be able to run the system within 30 minutes from this document.
             """
     };
 
@@ -646,135 +679,107 @@ public class GroqService : IGroqService
     {
         DocumentationType.UserGuide => """
             {
-              "executiveSummary": "3 plain-English sentences: (1) what this product does, (2) who uses it, (3) the core value it delivers. No technical terms. Example: 'Docu-Genius automatically creates professional documentation from your project's JIRA tickets and source code. It is designed for project managers, developers, and business analysts who need up-to-date docs without writing them manually. In under a minute, you get a polished PDF ready to share with your team or stakeholders.'",
-              "userGuide": "## Getting Started\n[Prerequisites and access requirements]\n\n## How to Create a Document\n1. [First step with what user sees]\n2. [Second step]\n3. [Continue for every step]\n\n## Understanding Your Results\n[What the output looks like, how to read it]\n\n## Downloading and Sharing\n[Steps to download and share the PDF]\n\n## Common Questions\n[3+ Q&A pairs]\n\n## Troubleshooting\n[3+ problems and exact solutions]",
+              "executiveSummary": "[3 plain-English sentences about the PROJECT IN THE SOURCE DATA: what it does, who uses it, the value it delivers — no technical terms]",
+              "userGuide": "[Full guide with ## headings and numbered steps drawn from the SOURCE DATA — describe what the user sees and does]",
               "features": [
                 {
-                  "name": "User-facing feature name (e.g. 'Generate from JIRA Ticket')",
-                  "description": "Plain-English benefit: what problem it solves for the user. No technical terms.",
-                  "usageExample": "Concrete scenario: 'Maria selects JIRA Only, types TMS-45 into the ticket field, adds context note about sprint 3, clicks Create Document, and downloads a 12-page PDF within 40 seconds.'"
+                  "name": "[Feature name as the end user would call it]",
+                  "description": "[Plain-English benefit this feature gives the user]",
+                  "usageExample": "[Realistic scenario of a user performing this task, based on SOURCE DATA]"
                 }
               ],
-              "recommendations": [
-                "Practical tip a user should know — e.g. 'For best results, ensure your JIRA ticket has a detailed description and acceptance criteria before generating documentation.'"
-              ],
-              "knownIssues": [
-                "Known limitation with its workaround — e.g. 'If the document shows incomplete content, the JIRA ticket may have had minimal description. Add more detail to the ticket and regenerate.'"
-              ]
+              "recommendations": ["[Practical tip for end users based on SOURCE DATA]"],
+              "knownIssues": ["[Known limitation from SOURCE DATA with workaround]"]
             }
             """,
 
         DocumentationType.TechnicalDocumentation => """
             {
-              "executiveSummary": "3-4 sentences: purpose of the system, technology stack (framework + language + key libraries), deployment target, and scope. Reference actual project names from the source.",
-              "technicalOverview": "## System Purpose\n[What problem this solves and for whom]\n\n## Project Structure\n[Each project/module, its responsibility, and key classes]\n\n## Request Lifecycle\n[Step-by-step: how a request flows from entry point through services to response]\n\n## Key Design Decisions\n[Why specific patterns/libraries were chosen — reference actual names from source]",
-              "architectureDescription": "## Architecture Pattern\n[Pattern used — e.g. layered, clean, microservices — with justification]\n\n## Component Breakdown\n[Every project with its role and dependencies]\n\n## Data Flow\n[Trace a specific use case end-to-end with actual class/method names]\n\n## External Integrations\n[Every third-party service: name, SDK, purpose, authentication method]",
-              "setupInstructions": "## Prerequisites\n- [SDK name and minimum version]\n- [Other required tools]\n\n## Clone the Repository\n```\ngit clone [url]\ncd [folder]\n```\n\n## Restore Dependencies\n```\ndotnet restore\n```\n\n## Configure Settings\n1. Copy appsettings.json to appsettings.Development.json\n2. Fill in: [list every key that needs a real value]\n\n## Run Locally\n```\ndotnet run --project src/[ProjectName]\n```\nAPI available at: [url]\n\n## Verify\n[How to confirm it is working — e.g. open Swagger at /swagger]",
-              "configurationGuide": "## appsettings.json Keys\n\n[Section.Key] — Type: string | Required: yes | Default: none\nEffect: [what this controls]\nExample: \"[realistic example value]\"\n\n[Repeat for every key in the source]",
+              "executiveSummary": "[3-4 sentences: purpose, tech stack, scope — all from SOURCE DATA]",
+              "technicalOverview": "[## headings covering: system purpose, project structure, request lifecycle, key design decisions — use actual names from SOURCE DATA]",
+              "architectureDescription": "[## headings covering: architecture pattern, component breakdown, data flow, external integrations — use actual names from SOURCE DATA]",
+              "setupInstructions": "[## Prerequisites\n- [tool + version from SOURCE DATA]\n\n## Clone & Build\n[actual commands]\n\n## Configuration\n[which file, which keys]\n\n## Run Locally\n[exact command and URL]]",
+              "configurationGuide": "[Every config key from SOURCE DATA: name, type, example value, what it controls]",
               "features": [
                 {
-                  "name": "Actual module name from source (e.g. 'JIRA Integration Service')",
-                  "description": "Technical description: which interface/class implements this, what it does internally, key methods, error handling approach.",
-                  "usageExample": "Code snippet or curl command showing real usage with actual field names from the source model."
+                  "name": "[Module or feature name from SOURCE DATA]",
+                  "description": "[Technical description using actual class/method names from SOURCE DATA]",
+                  "usageExample": "[Code snippet or command using actual field names from SOURCE DATA]"
                 }
               ],
               "apiEndpoints": [
                 {
-                  "method": "POST",
-                  "path": "/api/actual/path",
-                  "description": "What this endpoint does, when to call it, what it returns, required auth headers.",
-                  "requestBody": "{ \"actualField1\": \"string value\", \"actualField2\": 0, \"optionalField\": null }",
-                  "responseBody": "{ \"success\": true, \"actualResponseField\": \"value\", \"errorMessage\": null }"
+                  "method": "GET|POST|PUT|DELETE",
+                  "path": "[actual route from SOURCE DATA]",
+                  "description": "[what it does, when to call it]",
+                  "requestBody": "[valid JSON with actual fields from SOURCE DATA]",
+                  "responseBody": "[valid JSON with actual response fields from SOURCE DATA]"
                 }
               ],
-              "dependencies": [
-                "PackageName vX.Y.Z — specific reason: e.g. 'LibGit2Sharp v0.30.0 — used to clone remote repositories and enumerate commit history for analysis'"
-              ],
-              "recommendations": [
-                "Specific, actionable improvement with rationale — e.g. 'Add IMemoryCache to cache JIRA ticket data for 5 minutes to reduce API calls during batch processing.'"
-              ],
-              "knownIssues": [
-                "Specific technical issue observed in the source with suggested fix — e.g. 'The Git clone directory is never cleaned up after analysis, causing disk usage to grow. Add a cleanup step in GitService after analysis completes.'"
-              ]
+              "dependencies": ["[PackageName vX.Y — specific reason it is used in this project]"],
+              "recommendations": ["[Specific actionable improvement based on SOURCE DATA]"],
+              "knownIssues": ["[Specific issue observed in SOURCE DATA with suggested fix]"]
             }
             """,
 
         DocumentationType.ApiDocumentation => """
             {
-              "executiveSummary": "Base URL, authentication method (Bearer token / API key / none), content-type (application/json), and 1-sentence purpose. Example: 'The Docu-Genius API (base URL: https://localhost:60735) accepts JSON requests authenticated via CORS from approved origins. It generates AI-powered documentation PDFs from JIRA tickets and Git repositories.'",
-              "technicalOverview": "## Authentication\n[Step-by-step: how to authenticate, which header, what value format]\n\n## Common Headers\n[Every header with name, value format, and whether required]\n\n## Error Response Format\n[Standard error shape with field descriptions]\nExample: { \"message\": \"string\", \"traceId\": \"string\" }\n\n## HTTP Status Codes Used\n[Every status code returned by this API with meaning]",
+              "executiveSummary": "[Base URL, auth method, content-type, and 1-sentence purpose — all from SOURCE DATA]",
+              "technicalOverview": "[## Authentication, ## Common Headers, ## Error Response Format, ## HTTP Status Codes — all from SOURCE DATA]",
               "apiEndpoints": [
                 {
-                  "method": "POST",
-                  "path": "/api/actual/route",
-                  "description": "Full description: what this does, when to call it, prerequisites, side effects (e.g. 'Creates a PDF file on the server and returns its filename. The file is available for download via GET /api/documentation/download/{fileName} for the duration of the server session.').",
-                  "requestBody": "{ \"requiredField\": \"actual-example-value\", \"anotherRequired\": \"JiraOnly\", \"optionalField\": null }",
-                  "responseBody": "{ \"success\": true, \"fileName\": \"PROJ-123_FullDocumentation_20250421.pdf\", \"filePath\": \"./output/PROJ-123_FullDocumentation_20250421.pdf\" }"
+                  "method": "GET|POST|PUT|DELETE",
+                  "path": "[actual route from SOURCE DATA]",
+                  "description": "[purpose, side effects, auth required]",
+                  "requestBody": "[valid JSON with all actual fields and example values from SOURCE DATA]",
+                  "responseBody": "[valid JSON showing success and error shapes from SOURCE DATA]"
                 }
               ],
-              "dependencies": [
-                "External service name — how this API depends on it and what happens if it is unavailable"
-              ],
-              "recommendations": [
-                "Specific API improvement — e.g. 'Add a GET /api/documentation/status/{jobId} endpoint to support async generation with polling instead of a blocking 60-second POST request.'"
-              ],
-              "knownIssues": [
-                "Real API limitation — e.g. 'The /generate endpoint blocks the HTTP connection for the full generation time (20-60 seconds). Large repos or multiple tickets may cause client timeouts. Implement background jobs with a polling endpoint to fix this.'"
-              ]
+              "dependencies": ["[External service this API depends on — from SOURCE DATA]"],
+              "recommendations": ["[API design improvement based on SOURCE DATA]"],
+              "knownIssues": ["[API limitation observed in SOURCE DATA]"]
             }
             """,
 
         DocumentationType.ArchitectureOverview => """
             {
-              "executiveSummary": "1 substantial paragraph: what the system is, its design philosophy (e.g. clean architecture, layered), the core workflow from user input to output, and the primary technology choices.",
-              "technicalOverview": "## Technology Stack\n[Every major technology with version and WHY it was chosen over alternatives]\n\n## Project Dependencies\n[How projects reference each other — which project depends on which]\n\n## Runtime Environment\n[OS, SDK version, hosting model, expected load]",
-              "architectureDescription": "## System Overview\n[Design goals and architectural constraints]\n\n## Components and Responsibilities\n[Every project/service with its single responsibility and the interfaces it exposes]\n\n## Data Flow\n[Trace the full lifecycle: UI input → API → JIRA/Git fetch → Groq analysis → PDF generation → download]\n\n## External Integrations\n[Every third-party system: name, purpose, authentication, failure behaviour]\n\n## Scalability Considerations\n[Current bottlenecks, where the system would break under load, recommended fixes]\n\n## Security Posture\n[Credential handling, CORS configuration, known gaps, recommendations]",
-              "configurationGuide": "Infrastructure-level configuration: environment variables, server settings, CORS allowed origins, output directory, and how to configure each for production vs development.",
-              "dependencies": [
-                "LibraryName vX.Y — architectural role: e.g. 'QuestPDF v2024.10.2 — chosen for its code-first PDF generation API that integrates naturally with C# models, avoiding template files and allowing dynamic layout.'"
-              ],
-              "recommendations": [
-                "Architectural recommendation with clear rationale and estimated effort — e.g. 'Extract document generation into a background job (e.g. Hangfire) to eliminate the blocking 60-second HTTP request. Estimated effort: 1-2 days. Benefit: eliminates timeout risk and enables progress streaming.'"
-              ],
-              "knownIssues": [
-                "Architectural weakness observed in source — e.g. 'All services are registered as Singleton, including GitService which clones repos to disk. Concurrent requests will share state and may conflict. Switch Git operations to Scoped or use a semaphore.'"
-              ]
+              "executiveSummary": "[1 paragraph: what the system is, design philosophy, core workflow, primary technology choices — from SOURCE DATA]",
+              "technicalOverview": "[## Technology Stack with versions and rationale, ## Project Dependencies, ## Runtime Environment — from SOURCE DATA]",
+              "architectureDescription": "[## System Overview, ## Components and Responsibilities, ## Data Flow, ## External Integrations, ## Scalability, ## Security — all using actual names from SOURCE DATA]",
+              "configurationGuide": "[Infrastructure config, environment settings, deployment configuration — from SOURCE DATA]",
+              "dependencies": ["[LibraryName vX.Y — architectural role in this specific project]"],
+              "recommendations": ["[Architectural improvement with rationale and effort estimate — based on SOURCE DATA]"],
+              "knownIssues": ["[Architectural weakness observed in SOURCE DATA with suggested fix]"]
             }
             """,
 
         _ /* FullDocumentation */ => """
             {
-              "executiveSummary": "3-4 sentences suitable for a non-technical manager AND a developer: what the system does, who uses it, the technology stack, and the core value delivered.",
-              "technicalOverview": "## Purpose and Scope\n[Problem solved, system boundaries]\n\n## Architecture\n[Key components and how they interact — reference actual names]\n\n## Request Lifecycle\n[End-to-end flow with actual class/method names]\n\n## Technology Stack\n[Every major technology with justification]",
-              "architectureDescription": "## Components\n[Every project with its responsibility]\n\n## Data Flow\n[UI → API → integrations → output — step by step]\n\n## External Services\n[Every third-party with auth method and failure behaviour]\n\n## Scalability & Security\n[Current limits and known gaps]",
-              "userGuide": "## What This Does\n[Plain-English benefit]\n\n## Getting Started\n[Prerequisites for end users]\n\n## Step-by-Step: Create a Document\n1. [Step with what user sees]\n2. [Continue all steps]\n\n## Download Your Document\n[Steps]\n\n## Troubleshooting\n[3+ common problems with solutions]",
-              "setupInstructions": "## Prerequisites\n- [SDK + version]\n- [Tools]\n\n## Clone & Build\n```\ngit clone [url]\ndotnet restore\ndotnet build\n```\n\n## Configure\n[Which file, which keys, example values]\n\n## Run\n```\ndotnet run --project src/[Project]\n```",
-              "configurationGuide": "[Every appsettings key: name, type, example, effect]",
+              "executiveSummary": "[3-4 sentences for both technical and non-technical readers: what, who, stack, value — from SOURCE DATA]",
+              "technicalOverview": "[## Purpose, ## Architecture, ## Request Lifecycle, ## Technology Stack — from SOURCE DATA]",
+              "architectureDescription": "[## Components, ## Data Flow, ## External Services, ## Scalability & Security — from SOURCE DATA]",
+              "userGuide": "[Plain-English guide with ## headings and numbered steps — from SOURCE DATA]",
+              "setupInstructions": "[## Prerequisites, ## Clone & Build, ## Configure, ## Run — actual commands from SOURCE DATA]",
+              "configurationGuide": "[Every config key from SOURCE DATA: name, type, example, effect]",
               "features": [
                 {
-                  "name": "Actual feature name from source",
-                  "description": "Technical + user-facing description. Reference actual classes and user benefit.",
-                  "usageExample": "Concrete realistic example — code snippet OR user scenario."
+                  "name": "[Feature name from SOURCE DATA]",
+                  "description": "[Technical + user-facing description using SOURCE DATA]",
+                  "usageExample": "[Concrete example from SOURCE DATA]"
                 }
               ],
               "apiEndpoints": [
                 {
-                  "method": "POST",
-                  "path": "/api/actual/path",
-                  "description": "Purpose, required fields, side effects.",
-                  "requestBody": "{ \"actualField\": \"realistic-value\", \"sourceType\": \"JiraOnly\" }",
-                  "responseBody": "{ \"success\": true, \"fileName\": \"output.pdf\" }"
+                  "method": "GET|POST|PUT|DELETE",
+                  "path": "[actual path from SOURCE DATA]",
+                  "description": "[purpose and side effects]",
+                  "requestBody": "[valid JSON with actual fields from SOURCE DATA]",
+                  "responseBody": "[valid JSON with actual response from SOURCE DATA]"
                 }
               ],
-              "dependencies": [
-                "PackageName vX.Y — specific purpose in this project"
-              ],
-              "recommendations": [
-                "Specific actionable improvement with rationale and estimated effort"
-              ],
-              "knownIssues": [
-                "Specific issue from source with suggested fix"
-              ]
+              "dependencies": ["[PackageName vX.Y — purpose in this project]"],
+              "recommendations": ["[Specific improvement based on SOURCE DATA]"],
+              "knownIssues": ["[Specific issue from SOURCE DATA with fix]"]
             }
             """
     };
@@ -814,44 +819,52 @@ public class GroqService : IGroqService
         return role + """
 
 
-            ═══════════════════════════════════════════════════════
-            CONTENT QUALITY STANDARDS — these are strictly enforced
-            ═══════════════════════════════════════════════════════
+            ══════════════════════════════════════════════════════
+            CRITICAL: SOURCE DATA PRIMACY
+            ══════════════════════════════════════════════════════
+            You will receive SOURCE DATA (JIRA tickets and/or a Git repository).
+            You MUST document ONLY that project. Do NOT document Docu-Genius, this
+            prompt, or any tool that sent this request. Every fact you write must
+            come from the SOURCE DATA provided in the user message.
 
-            1. SPECIFICITY — use actual names and values from the source data, never invent them.
+            ══════════════════════════════════════════════════════
+            CONTENT QUALITY STANDARDS
+            ══════════════════════════════════════════════════════
+
+            1. SPECIFICITY — use actual names, IDs, and values from the source data.
                ✗ WRONG: "The service processes user requests and returns results."
-               ✓ RIGHT: "The DocumentationController.GenerateDocumentation() endpoint accepts a POST
-                          request containing SourceType, JiraTicketIds, and GitRepositoryUrl, then
-                          orchestrates calls to JiraService, GroqService, and PdfService in sequence."
+               ✓ RIGHT: "The OrderService.PlaceOrder() method validates stock availability
+                          against the InventoryRepository, then persists the order to the
+                          orders table and publishes an OrderCreated event."
+               (Use names from YOUR source data — the example above is illustrative only.)
 
             2. DEPTH — each major text field must be substantive:
-               • executiveSummary       → minimum 3 sentences covering WHAT, WHY, and WHO
-               • technicalOverview      → minimum 3 paragraphs; use ## headings for each topic
-               • architectureDescription→ minimum 3 paragraphs; describe components, data flow, integrations
-               • userGuide              → minimum 4 numbered steps per task; include what the user sees
-               • setupInstructions      → every command listed explicitly; no "install dependencies" without the command
-               • configurationGuide     → every config key, its type, default value, and effect
+               • executiveSummary       → minimum 3 sentences: WHAT it does, WHY it exists, WHO uses it
+               • technicalOverview      → minimum 3 paragraphs with ## headings
+               • architectureDescription→ minimum 3 paragraphs covering components, data flow, integrations
+               • userGuide              → minimum 4 numbered steps per task; describe what the user sees
+               • setupInstructions      → every command listed explicitly with the exact command string
+               • configurationGuide     → every config key, type, default, and effect
 
-            3. ACCURACY — never hallucinate. Only describe what is explicitly present in the source.
-               If data is sparse, write: "Based on available source information, [what is known].
-               Full documentation of [area] would require [what is missing]."
+            3. ACCURACY — only describe what is present in the source data.
+               If data is sparse: "Based on available information, [what is known].
+               Additional documentation would require [what is missing]."
 
-            4. ARRAYS — populate every list with at least 2–3 substantive items when the source supports it.
-               Empty arrays [] are only acceptable when the source genuinely has nothing to list.
+            4. ARRAYS — at least 2–3 items per list when the source supports it.
+               Empty arrays [] are only acceptable when truly nothing applies.
 
-            5. NO TRUNCATION — write complete sentences; never end with "etc.", "…", or "and more".
-               If a section needs more space, keep writing — do not cut it short.
+            5. NO TRUNCATION — complete sentences; never end with "etc.", "…", or "and more".
 
-            ═══════════════════════════════════════════════════════
+            ══════════════════════════════════════════════════════
             OUTPUT FORMAT — follow exactly
-            ═══════════════════════════════════════════════════════
+            ══════════════════════════════════════════════════════
 
             • Respond with ONLY a raw JSON object. Zero prose, zero explanations, zero ```json fences.
             • First character must be {, last character must be }. Nothing before or after.
             • String field values use markdown: ## for headings, - for bullets, 1. 2. 3. for steps.
             • Do NOT embed JSON objects inside string values EXCEPT apiEndpoints.requestBody and
               apiEndpoints.responseBody, which must contain realistic JSON payload examples.
-            • requestBody / responseBody: show actual field names and realistic value types — not descriptions.
+            • requestBody / responseBody: show actual field names and realistic value types.
             """;
     }
 
