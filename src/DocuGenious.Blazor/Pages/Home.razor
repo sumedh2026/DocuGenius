@@ -483,9 +483,9 @@
 
     private void CloseDialog()
     {
-        // Clear the form only after a successful generation so the user can
-        // start fresh. On error, keep the fields so they can fix and retry.
-        if (_state == UiState.Success)
+        // Clear on success (fresh start) and on validation failure (back to form).
+        // On error we keep the fields so the user can fix inputs and retry.
+        if (_state == UiState.Success || _state == UiState.Validating)
             ResetForm();
 
         _showDialog = false;
