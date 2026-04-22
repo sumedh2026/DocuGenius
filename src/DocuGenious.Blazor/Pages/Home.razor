@@ -116,7 +116,7 @@
                         <span class="dg-file-icon">📄</span>
                         <span class="dg-file-name" title="@f.FileName">@f.FileName</span>
                         <span class="dg-file-date">@f.CreatedOn.ToString("dd MMM yyyy, HH:mm")</span>
-                        <button class="dg-btn-download"
+                        <button class="dg-btn-download dg-btn-download-sm"
                                 @onclick="() => DownloadPdf(f.FileName)">
                             ⬇ Download
                         </button>
@@ -140,6 +140,10 @@
                     <div class="dg-spinner"></div>
                     <p class="dg-status-text">@_statusMessage</p>
                 </div>
+
+                <button class="dg-btn-ghost" @onclick="CloseDialog">
+                    Hide
+                </button>
             }
 
             @if (_state == UiState.Success)
@@ -238,6 +242,16 @@
         color: #6b7280;
         white-space: nowrap;
     }
+
+    /* Compact download button used inside the file-history rows.
+       Overrides the full-width / large-padding defaults from app.css. */
+    .dg-btn-download-sm {
+        width: auto;
+        flex-shrink: 0;
+        padding: 6px 14px;
+        font-size: 0.82rem;
+        margin-top: 0;
+    }
 </style>
 
 @code {
@@ -320,8 +334,6 @@
 
         if (_result.Success)
         {
-            _state = UiState.Success;
-
             var file = new FileRecord
             {
                 FileName  = _result.FileName,
@@ -330,11 +342,21 @@
 
             _files.Insert(0, file);
             await Storage.SaveFilesAsync(_files);
+
+            // Only pop the success dialog if the user hasn't already hidden it.
+            // If they clicked "Hide" while it was generating, the file now
+            // silently appears in the list below.
+            if (_showDialog)
+                _state = UiState.Success;
+            else
+                _state = UiState.Form;
         }
         else
         {
             _state        = UiState.Error;
             _errorMessage = _result.Error ?? "Error occurred";
+            // Always re-show the dialog for errors so the user sees what went wrong
+            _showDialog   = true;
         }
     }
 
@@ -370,7 +392,13 @@
             ResetForm();
 
         _showDialog = false;
-        _state = UiState.Form;
+
+        // If generation is still running, leave _state as Generating so
+        // Generate() can still resolve correctly when it finishes:
+        //   - Success → file is silently added to the list (no modal re-shown)
+        //   - Error   → modal is re-shown so the user still sees the error
+        if (_state != UiState.Generating)
+            _state = UiState.Form;
     }
 
     private void ResetForm()
