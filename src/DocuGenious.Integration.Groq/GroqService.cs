@@ -26,10 +26,13 @@ public class GroqService : IGroqService
             throw new InvalidOperationException(
                 "Groq API key is not configured. Please set Groq:ApiKey in appsettings.json.");
 
-        // The OpenAI .NET SDK supports custom endpoints — Groq exposes an OpenAI-compatible API
+        // The OpenAI .NET SDK supports custom endpoints — Groq exposes an OpenAI-compatible API.
+        // NetworkTimeout caps each individual HTTP call so a slow Groq response never hangs
+        // the whole API indefinitely. The value comes from Groq:TimeoutSeconds in appsettings.
         var clientOptions = new OpenAIClientOptions
         {
-            Endpoint = new Uri(_settings.BaseUrl)
+            Endpoint       = new Uri(_settings.BaseUrl),
+            NetworkTimeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds)
         };
         var groqClient = new OpenAIClient(new ApiKeyCredential(_settings.ApiKey), clientOptions);
         _chatClient = groqClient.GetChatClient(_settings.Model);
@@ -182,21 +185,25 @@ public class GroqService : IGroqService
 
         var options = new ChatCompletionOptions
         {
-            // Increased from 4096 → 8192 for more comprehensive, untruncated output
-            MaxOutputTokenCount = Math.Max(_settings.MaxTokens, 8192),
+            // Use the configured value (default 6000). Keeping this reasonable avoids
+            // very slow Groq responses that cause client-side timeouts.
+            MaxOutputTokenCount = _settings.MaxTokens,
             // 0.4 gives deterministic output while allowing natural language variation
             Temperature = 0.4f
         };
 
         for (int attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
         {
+            // Fresh token per attempt so each call has the full timeout budget
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+
             try
             {
                 _logger.LogInformation(
-                    "Calling Groq (attempt {Attempt}/{Max}, docType={DocType})...",
-                    attempt + 1, RetryDelaysMs.Length + 1, docType);
+                    "Calling Groq (attempt {Attempt}/{Max}, docType={DocType}, timeout={Timeout}s)...",
+                    attempt + 1, RetryDelaysMs.Length + 1, docType, _settings.TimeoutSeconds);
 
-                var response = await _chatClient.CompleteChatAsync(messages, options);
+                var response = await _chatClient.CompleteChatAsync(messages, options, cts.Token);
                 var content  = response.Value.Content[0].Text;
 
                 _logger.LogInformation(
@@ -207,6 +214,13 @@ public class GroqService : IGroqService
                 var result = ParseAnalysisResult(content, docType, sourceInfo);
                 ValidateOutputQuality(result, docType);
                 return result;
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // Our own timeout fired — surface a clear message; no point retrying
+                throw new InvalidOperationException(
+                    $"Groq did not respond within {_settings.TimeoutSeconds} seconds. " +
+                    "Try increasing Groq:TimeoutSeconds in appsettings.json or reduce Groq:MaxTokens.");
             }
             catch (ClientResultException ex) when (ex.Status == 429)
             {
@@ -239,7 +253,8 @@ public class GroqService : IGroqService
         }
 
         // Final attempt — let any exception propagate naturally
-        var finalResponse = await _chatClient.CompleteChatAsync(messages, options);
+        using var finalCts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+        var finalResponse = await _chatClient.CompleteChatAsync(messages, options, finalCts.Token);
         var finalContent  = finalResponse.Value.Content[0].Text;
         var finalResult   = ParseAnalysisResult(finalContent, docType, sourceInfo);
         ValidateOutputQuality(finalResult, docType);

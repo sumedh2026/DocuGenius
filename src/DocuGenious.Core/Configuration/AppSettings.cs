@@ -26,8 +26,13 @@ public class GroqSettings
 {
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = "llama-3.3-70b-versatile";
-    public int MaxTokens { get; set; } = 4096;
+    public int MaxTokens { get; set; } = 6000;
     public string BaseUrl { get; set; } = "https://api.groq.com/openai/v1";
+    /// <summary>
+    /// Seconds before an individual Groq API call is cancelled.
+    /// Default 120 s. Increase for very large documents or slow networks.
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 120;
 }
 
 public class OutputSettings
