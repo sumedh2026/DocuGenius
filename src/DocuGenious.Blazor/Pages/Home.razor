@@ -296,8 +296,27 @@
 
     private void CloseDialog()
     {
+        // Clear the form only after a successful generation so the user can
+        // start fresh. On error, keep the fields so they can fix and retry.
+        if (_state == UiState.Success)
+            ResetForm();
+
         _showDialog = false;
         _state = UiState.Form;
+    }
+
+    private void ResetForm()
+    {
+        _sourceType       = "";
+        _docType          = "FullDocumentation";
+        _repoUrl          = "";
+        _branch           = "";
+        _additionalContext = "";
+        _outputFileName   = "";
+        _ticketInput      = "";
+        _ticketIds        = new();
+        _result           = null;
+        _errorMessage     = "";
     }
 
     private async Task DownloadPdf(string? fileName = null)
