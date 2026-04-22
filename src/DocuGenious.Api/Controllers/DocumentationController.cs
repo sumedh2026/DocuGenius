@@ -1,3 +1,4 @@
+using DocuGenious.Api.Services;
 using DocuGenious.Core.Interfaces;
 using DocuGenious.Core.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,7 @@ public class DocumentationController : ControllerBase
     private readonly IGitService _gitService;
     private readonly IGroqService _groqService;
     private readonly IPdfService _pdfService;
+    private readonly JobStatusService _jobStatus;
     private readonly ILogger<DocumentationController> _logger;
 
     public DocumentationController(
@@ -19,13 +21,15 @@ public class DocumentationController : ControllerBase
         IGitService gitService,
         IGroqService groqService,
         IPdfService pdfService,
+        JobStatusService jobStatus,
         ILogger<DocumentationController> logger)
     {
         _jiraService = jiraService;
-        _gitService = gitService;
+        _gitService  = gitService;
         _groqService = groqService;
-        _pdfService = pdfService;
-        _logger = logger;
+        _pdfService  = pdfService;
+        _jobStatus   = jobStatus;
+        _logger      = logger;
     }
 
     /// <summary>
@@ -53,6 +57,14 @@ public class DocumentationController : ControllerBase
                 return BadRequest(new { message = "Either gitRepositoryUrl or gitLocalPath is required" });
         }
 
+        var jobId = request.JobId;
+        void Status(string msg)
+        {
+            _logger.LogInformation("{Msg}", msg);
+            if (!string.IsNullOrWhiteSpace(jobId))
+                _jobStatus.Update(jobId, msg);
+        }
+
         try
         {
             List<JiraTicket>? tickets = null;
@@ -65,7 +77,8 @@ public class DocumentationController : ControllerBase
             // Step 1: Fetch JIRA tickets
             if (request.SourceType is SourceType.JiraOnly or SourceType.Both)
             {
-                _logger.LogInformation("Fetching {Count} JIRA ticket(s)...", request.JiraTicketIds.Count);
+                var count = request.JiraTicketIds.Count;
+                Status($"📋 Fetching {count} JIRA ticket{(count == 1 ? "" : "s")}…");
                 tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
 
                 // Guard: if every ticket failed the service throws, but defend here too so
@@ -77,6 +90,8 @@ public class DocumentationController : ControllerBase
                                   $"{string.Join(", ", request.JiraTicketIds)}. " +
                                   "Please verify the ticket IDs exist and that your JIRA credentials have access."
                     });
+
+                Status($"✅ Fetched {tickets.Count} JIRA ticket{(tickets.Count == 1 ? "" : "s")} successfully");
             }
 
             // Step 2: Fetch Git repository
@@ -84,32 +99,38 @@ public class DocumentationController : ControllerBase
             {
                 if (!string.IsNullOrWhiteSpace(request.GitRepositoryUrl))
                 {
-                    _logger.LogInformation("Cloning and analysing remote repository...");
+                    Status("🔍 Cloning and analysing remote Git repository…");
                     repoInfo = await _gitService.CloneAndAnalyzeAsync(request.GitRepositoryUrl, request.GitBranch, request);
                 }
                 else
                 {
-                    _logger.LogInformation("Analysing local repository at {Path}...", request.GitLocalPath);
+                    Status($"🔍 Analysing local repository…");
                     repoInfo = await _gitService.AnalyzeLocalRepositoryAsync(request.GitLocalPath!, request.GitBranch, request);
                 }
+                Status("✅ Repository analysed successfully");
             }
 
             // Step 3: Analyse with Groq
-            _logger.LogInformation("Analysing with Groq ({DocType})...", request.DocumentationType);
+            Status($"🤖 Analysing with Groq AI — generating {request.DocumentationType} (this may take a minute)…");
             AnalysisResult analysisResult = request.SourceType switch
             {
                 SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
                 SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
                 _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
             };
+            Status("✅ AI analysis complete");
 
             // Step 4: Generate PDF
             var outputFileName = string.IsNullOrWhiteSpace(request.OutputFileName)
                 ? BuildDefaultFileName(request)
                 : request.OutputFileName;
 
-            _logger.LogInformation("Generating PDF: {FileName}", outputFileName);
+            Status($"📄 Building PDF document…");
             var filePath = await _pdfService.GeneratePdfAsync(analysisResult, outputFileName);
+
+            Status("✅ Document ready!");
+            if (!string.IsNullOrWhiteSpace(jobId))
+                _jobStatus.Remove(jobId);   // clean up immediately on success
 
             return Ok(new
             {
@@ -121,8 +142,26 @@ public class DocumentationController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating documentation");
+            if (!string.IsNullOrWhiteSpace(jobId))
+                _jobStatus.Remove(jobId);   // clean up on error too
             return StatusCode(500, new { message = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Returns the current progress status for a running generation job.
+    /// The Blazor client polls this endpoint every ~1.5 s while generating.
+    /// Returns 204 No Content when the job is unknown or has already completed.
+    /// </summary>
+    [HttpGet("status/{jobId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult GetStatus(string jobId)
+    {
+        var status = _jobStatus.Get(jobId);
+        return status is null
+            ? NoContent()
+            : Ok(new { status });
     }
 
     /// <summary>Downloads a previously generated PDF by file name.</summary>

@@ -74,6 +74,32 @@ public class DocumentationApiService
         }
     }
 
+    // ─── Job status polling ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the current status string for a running job, or null when the job
+    /// is not found (not started yet, or already finished and cleaned up).
+    /// </summary>
+    public async Task<string?> GetJobStatusAsync(string jobId)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"api/documentation/status/{Uri.EscapeDataString(jobId)}");
+            if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                return null;
+
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadFromJsonAsync<JobStatusResponse>();
+                return body?.Status;
+            }
+        }
+        catch { /* polling errors are non-fatal */ }
+        return null;
+    }
+
+    private sealed record JobStatusResponse(string? Status);
+
     // ─── PDF download ─────────────────────────────────────────────────────────────
 
     public async Task<byte[]?> DownloadPdfAsync(string fileName)
