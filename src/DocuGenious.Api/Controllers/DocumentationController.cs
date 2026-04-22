@@ -93,22 +93,29 @@ public class DocumentationController : ControllerBase
 
                 Status($"✅ Fetched {tickets.Count} JIRA ticket{(tickets.Count == 1 ? "" : "s")} successfully");
             }
-			if (request.DocumentationType == DocumentationType.UserGuide)
-			{
-				_logger.LogInformation("Filtering tickets for User Guide...");
+            // User Guide requires every ticket to be Done or Complete
+            if (request.DocumentationType == DocumentationType.UserGuide && tickets != null && tickets.Count > 0)
+            {
+                var doneStatuses = new[] { "done", "complete", "completed" };
+                var notDoneTickets = tickets
+                    .Where(t => !doneStatuses.Any(s =>
+                        t.Status?.Contains(s, StringComparison.OrdinalIgnoreCase) == true))
+                    .ToList();
 
-				var hasCompletedTickets = tickets != null &&
-										  tickets.Any(t =>
-											  t.Status == null ||
-											  !t.Status.Contains("completed", StringComparison.OrdinalIgnoreCase));
+                if (notDoneTickets.Count > 0)
+                {
+                    var details = string.Join(", ", notDoneTickets.Select(t =>
+                        $"{t.Key} (status: {(string.IsNullOrWhiteSpace(t.Status) ? "unknown" : t.Status)})"));
 
-				if (hasCompletedTickets)
-				{
-					return ValidationProblem(
-						detail: "User Guide documentation typically only includes completed tickets. Please review the filtered list of tickets and regenerate if necessary."
-					);
-				}
-			}
+                    return BadRequest(new
+                    {
+                        message =
+                            "User Guide can only be generated for completed tickets. " +
+                            $"The following ticket(s) are not done yet: {details}. " +
+                            "Please make sure all tickets have status 'Done' or 'Complete' before generating a User Guide."
+                    });
+                }
+            }
 			// Step 2: Fetch Git repository
 			if (request.SourceType is SourceType.GitOnly or SourceType.Both)
             {

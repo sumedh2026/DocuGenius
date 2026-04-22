@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using DocuGenious.Blazor.Models;
 
 namespace DocuGenious.Blazor.Services;
@@ -61,29 +62,16 @@ public class DocumentationApiService
 				return result;
 			}
 
-			if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
-			{
-				var validation = await response.Content
-					.ReadFromJsonAsync<ValidationProblemResponse>();
-
-				if (validation != null)
-				{
-					// Prefer `detail` if present
-					if (!string.IsNullOrWhiteSpace(validation.Detail))
-					{
-						return new GenerateResult
-						{
-							Success = false,
-							Error = validation.Detail
-						};
-					}
-				}
-			}
+			// Read raw body once — the stream can only be consumed once
 			var errorBody = await response.Content.ReadAsStringAsync();
+
+			// Try to surface a friendly message from the JSON payload
+			// (API returns { "message": "..." } for most errors)
+			var friendly = TryExtractMessage(errorBody);
 			return new GenerateResult
 			{
 				Success = false,
-				Error = $"Server error {(int)response.StatusCode}: {errorBody}"
+				Error   = friendly ?? $"Something went wrong (HTTP {(int)response.StatusCode}). Please try again."
 			};
 		}
 		catch (Exception ex)
@@ -118,6 +106,32 @@ public class DocumentationApiService
 
     private sealed record JobStatusResponse(string? Status);
 
+    /// <summary>
+    /// Tries to pull a human-readable message out of a JSON error body.
+    /// Checks "message", "detail", "title", and "error" properties in order.
+    /// Returns null when the body is not JSON or none of those properties exist.
+    /// </summary>
+    private static string? TryExtractMessage(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            foreach (var prop in new[] { "message", "detail", "title", "error" })
+            {
+                if (root.TryGetProperty(prop, out var el) &&
+                    el.ValueKind == JsonValueKind.String)
+                {
+                    var val = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(val)) return val;
+                }
+            }
+        }
+        catch { /* not JSON — fall through */ }
+        return null;
+    }
+
     // ─── PDF download ─────────────────────────────────────────────────────────────
 
 	public async Task<byte[]?> DownloadPdfAsync(string fileName)
@@ -130,13 +144,6 @@ public class DocumentationApiService
 		{
 			return null;
 		}
-	}
-
-	public class ValidationProblemResponse
-	{
-		public string? Title { get; set; }
-		public string? Detail { get; set; }
-		public Dictionary<string, string[]>? Errors { get; set; }
 	}
 
 }

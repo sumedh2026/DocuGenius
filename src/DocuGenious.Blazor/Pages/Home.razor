@@ -141,6 +141,45 @@
     <div class="dg-modal-overlay">
         <div class="dg-modal">
 
+            @if (_state == UiState.Validating)
+            {
+                <p class="dg-modal-heading">
+                    @(_validationRunning ? "🔍 Checking inputs…" : "⚠️ Some checks failed")
+                </p>
+
+                <div class="dg-validation-list" style="text-align:left; margin-top:8px;">
+                    @foreach (var row in _validationRows)
+                    {
+                        <div class="dg-validation-row @GetStatusClass(row.Status)">
+                            <span class="dg-vicon">@GetStatusIcon(row.Status)</span>
+                            <div class="dg-vtext">
+                                <span class="dg-vlabel">@row.Label</span>
+                                @if (!string.IsNullOrWhiteSpace(row.Message))
+                                {
+                                    <span class="dg-vmsg">@row.Message</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_validationRunning)
+                    {
+                        <div class="dg-validation-row dg-vstatus-checking">
+                            <span class="dg-vicon">⏳</span>
+                            <div class="dg-vtext">
+                                <span class="dg-vlabel">Validating…</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (!_validationRunning)
+                {
+                    <button class="dg-btn-ghost" style="margin-top:16px;" @onclick="CloseDialog">
+                        ← Back to form
+                    </button>
+                }
+            }
+
             @if (_state == UiState.Generating)
             {
                 <div class="dg-progress">
@@ -199,8 +238,17 @@
         background: white;
         padding: 25px;
         border-radius: 12px;
-        min-width: 320px;
+        min-width: 340px;
+        max-width: 480px;
+        width: 90vw;
         text-align: center;
+    }
+
+    .dg-modal-heading {
+        font-weight: 700;
+        font-size: 1rem;
+        color: #374151;
+        margin-bottom: 4px;
     }
 
     .dg-status-text {
@@ -263,10 +311,14 @@
 
 @code {
 
-    private enum UiState { Form, Generating, Success, Error }
+    private enum UiState { Form, Validating, Generating, Success, Error }
     private UiState _state = UiState.Form;
 
     private bool _showDialog = false;
+
+    // ─── Validation ───────────────────────────────────────────────────────────────
+    private List<ValidationRow> _validationRows   = new();
+    private bool                _validationRunning = false;
 
     // ─── Live status ──────────────────────────────────────────────────────────────
     private string _statusMessage = "⏳ Starting…";
@@ -304,19 +356,36 @@
         if (!string.IsNullOrWhiteSpace(_ticketInput))
             AddTicket();
 
-        await Generate();
+        // ── Open the dialog in Validating state for live feedback ─────────────
+        _showDialog        = true;
+        _state             = UiState.Validating;
+        _validationRunning = true;
+        _validationRows    = new List<ValidationRow>();
+
+        var (rows, canProceed) = await Validator.ValidateAsync(
+            _sourceType,
+            _ticketIds,
+            ShowGit ? _repoUrl : null,
+            _branch,
+            _outputFileName,
+            _docType,
+            updatedRows =>
+            {
+                _validationRows = updatedRows;
+                StateHasChanged();
+            });
+
+        _validationRunning = false;
+        _validationRows    = rows;
+
+        // If the user already closed the dialog, do nothing
+        if (!_showDialog) return;
+
+        if (canProceed)
+            await Generate();
+        // else: stay in Validating state — user sees the failure rows + Close button
     }
-    private void clear()
-    {
-        _sourceType = "";
-        _ticketInput = "";
-        _repoUrl = "";
-        _branch = "";
-        _docType = "";
-        _additionalContext = "";
-        _outputFileName = "";
-        _ticketIds = [];
-    }
+
     private async Task Generate()
     {
         _showDialog      = true;
@@ -410,12 +479,14 @@
 
         _showDialog = false;
 
-        // If generation is still running, leave _state as Generating so
-        // Generate() can still resolve correctly when it finishes:
-        //   - Success → file is silently added to the list (no modal re-shown)
-        //   - Error   → modal is re-shown so the user still sees the error
+        // During generation: leave state as Generating so Generate() can still
+        // resolve correctly — success silently adds to the list, error re-opens.
+        // During Validating/Fail: go back to Form so the user can fix inputs.
         if (_state != UiState.Generating)
-            _state = UiState.Form;
+        {
+            _state             = UiState.Form;
+            _validationRunning = false;
+        }
     }
 
     private void ResetForm()
@@ -431,6 +502,8 @@
         _result            = null;
         _errorMessage      = "";
         _statusMessage     = "⏳ Starting…";
+        _validationRows    = new();
+        _validationRunning = false;
 
         // Cancel any in-flight polling (shouldn't happen, but defensive)
         _pollingCts?.Cancel();
@@ -469,4 +542,24 @@
     private async Task FocusTagInput()
         => await JS.InvokeVoidAsync("eval",
             "document.getElementById('tag-input')?.focus()");
+
+    // ─── Validation row display helpers ──────────────────────────────────────────
+
+    private static string GetStatusClass(ValidationStatus status) => status switch
+    {
+        ValidationStatus.Checking => "dg-vstatus-checking",
+        ValidationStatus.Pass     => "dg-vstatus-pass",
+        ValidationStatus.Warn     => "dg-vstatus-warn",
+        ValidationStatus.Fail     => "dg-vstatus-fail",
+        _                         => ""
+    };
+
+    private static string GetStatusIcon(ValidationStatus status) => status switch
+    {
+        ValidationStatus.Checking => "⏳",
+        ValidationStatus.Pass     => "✅",
+        ValidationStatus.Warn     => "⚠️",
+        ValidationStatus.Fail     => "❌",
+        _                         => "•"
+    };
 }
