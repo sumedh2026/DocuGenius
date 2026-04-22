@@ -26,10 +26,14 @@ public class GroqService : IGroqService
             throw new InvalidOperationException(
                 "Groq API key is not configured. Please set Groq:ApiKey in appsettings.json.");
 
-        // The OpenAI .NET SDK supports custom endpoints — Groq exposes an OpenAI-compatible API
+        // The OpenAI .NET SDK supports custom endpoints — Groq exposes an OpenAI-compatible API.
+        // NetworkTimeout is set to 10 minutes here so the SDK's own HttpClient never
+        // interferes with a long streaming response. The actual per-call absolute limit is
+        // controlled by the CancellationToken created from Groq:TimeoutSeconds (default 300 s).
         var clientOptions = new OpenAIClientOptions
         {
-            Endpoint = new Uri(_settings.BaseUrl)
+            Endpoint       = new Uri(_settings.BaseUrl),
+            NetworkTimeout = TimeSpan.FromMinutes(10)
         };
         var groqClient = new OpenAIClient(new ApiKeyCredential(_settings.ApiKey), clientOptions);
         _chatClient = groqClient.GetChatClient(_settings.Model);
@@ -68,15 +72,11 @@ public class GroqService : IGroqService
         _logger.LogInformation("Analysing {Count} JIRA ticket(s) with Groq...", tickets.Count);
 
         var ticketContext = BuildJiraContext(tickets);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
-            === JIRA TICKETS ===
-            {ticketContext}
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
-            """;
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: $"=== JIRA TICKETS ===\n{ticketContext}",
+            sourceCount: tickets.Count);
 
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))}");
@@ -88,15 +88,11 @@ public class GroqService : IGroqService
         _logger.LogInformation("Analysing Git repository at {Path} with Groq...", repoInfo.RepositoryPath);
 
         var repoContext = BuildGitContext(repoInfo);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
-            === GIT REPOSITORY ===
-            {repoContext}
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
-            """;
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: $"=== GIT REPOSITORY ===\n{repoContext}",
+            sourceCount: 1);
 
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"Repository: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
@@ -109,9 +105,7 @@ public class GroqService : IGroqService
 
         var ticketContext = BuildJiraContext(tickets);
         var repoContext   = BuildGitContext(repoInfo);
-        var userPrompt = $"""
-            {GetFocusInstructions(docType)}
-            {BuildAdditionalContextSection(additionalContext)}
+        var combined = $"""
             The JIRA tickets define the requirements; the Git repository shows the implementation.
 
             === JIRA TICKETS ===
@@ -119,24 +113,33 @@ public class GroqService : IGroqService
 
             === GIT REPOSITORY ===
             {repoContext}
-
-            Respond with a valid JSON object following this exact schema:
-            {GetJsonSchema(docType)}
             """;
+
+        var userPrompt = BuildUserPrompt(
+            docType,
+            additionalContext,
+            sourceData: combined,
+            sourceCount: tickets.Count + 1);
 
         return await CallOpenAiAsync(GetSystemPrompt(docType), userPrompt, docType,
             $"JIRA: {string.Join(", ", tickets.Select(t => t.Key))} | Repo: {repoInfo.RepositoryUrl ?? repoInfo.RepositoryPath}");
     }
 
-    private static string BuildAdditionalContextSection(string? additionalContext) =>
-        string.IsNullOrWhiteSpace(additionalContext)
+    private static string BuildUserPrompt(
+        DocumentationType docType,
+        string? additionalContext,
+        string sourceData,
+        int sourceCount)
+    {
+        var extra = string.IsNullOrWhiteSpace(additionalContext)
             ? string.Empty
-            : $"""
+            : $"Additional context: {additionalContext.Trim()}\n";
 
-            === ADDITIONAL CONTEXT ===
-            {additionalContext.Trim()}
-
-            """;
+        return GetFocusInstructions(docType) + "\n" +
+               extra +
+               "SOURCE DATA:\n" + sourceData + "\n" +
+               "Output JSON:\n" + GetJsonSchema(docType);
+    }
 
 
     // Retry delays for transient Groq server errors (5xx). 429/401 are not retried.
@@ -153,37 +156,53 @@ public class GroqService : IGroqService
 
         var options = new ChatCompletionOptions
         {
-            // Increased from 4096 → 8192 for more comprehensive, untruncated output
-            MaxOutputTokenCount = Math.Max(_settings.MaxTokens, 8192),
+            MaxOutputTokenCount = _settings.MaxTokens,
             // 0.4 gives deterministic output while allowing natural language variation
             Temperature = 0.4f
         };
 
         for (int attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
         {
+            // Absolute ceiling per attempt. With streaming the network timer resets on
+            // every received chunk, so this only fires if Groq stops sending entirely.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+
             try
             {
                 _logger.LogInformation(
-                    "Calling Groq (attempt {Attempt}/{Max}, docType={DocType})...",
-                    attempt + 1, RetryDelaysMs.Length + 1, docType);
+                    "Calling Groq streaming (attempt {Attempt}/{Max}, docType={DocType}, maxTokens={Tokens})...",
+                    attempt + 1, RetryDelaysMs.Length + 1, docType, _settings.MaxTokens);
 
-                var response = await _chatClient.CompleteChatAsync(messages, options);
-                var content  = response.Value.Content[0].Text;
+                // ── Streaming call ──────────────────────────────────────────────
+                // Tokens stream back as they are generated, so no single "wait for
+                // the whole response" hang. Each received chunk resets the read timer.
+                var sb = new StringBuilder();
+                await foreach (var update in
+                    _chatClient.CompleteChatStreamingAsync(messages, options, cts.Token))
+                {
+                    foreach (var part in update.ContentUpdate)
+                        sb.Append(part.Text);
+                }
 
-                _logger.LogInformation(
-                    "Groq responded — {Chars} chars, finish={Finish}",
-                    content.Length,
-                    response.Value.FinishReason);
+                var content = sb.ToString();
+                _logger.LogInformation("Groq stream complete — {Chars} chars", content.Length);
 
                 var result = ParseAnalysisResult(content, docType, sourceInfo);
                 ValidateOutputQuality(result, docType);
                 return result;
             }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // Absolute ceiling reached — no point retrying a hung model
+                throw new InvalidOperationException(
+                    $"Groq stopped sending data after {_settings.TimeoutSeconds} seconds. " +
+                    "Try increasing Groq:TimeoutSeconds or reducing Groq:MaxTokens in appsettings.json.");
+            }
             catch (ClientResultException ex) when (ex.Status == 429)
             {
-                // Quota exhausted — no point retrying
+                // Rate limit exhausted — no point retrying immediately
                 throw new InvalidOperationException(
-                    "Groq quota exhausted. Check your plan at https://console.groq.com", ex);
+                    "Groq rate limit reached. Wait a moment and try again, or check your plan at https://console.groq.com", ex);
             }
             catch (ClientResultException ex) when (ex.Status == 401)
             {
@@ -201,18 +220,25 @@ public class GroqService : IGroqService
             }
             catch (Exception ex) when (ex is not InvalidOperationException && attempt < RetryDelaysMs.Length)
             {
-                // Network / timeout — retry
+                // Network blip — retry
                 _logger.LogWarning(ex,
-                    "Groq call failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
+                    "Groq stream failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
                     attempt + 1, ex.GetType().Name, RetryDelaysMs[attempt]);
                 await Task.Delay(RetryDelaysMs[attempt]);
             }
         }
 
         // Final attempt — let any exception propagate naturally
-        var finalResponse = await _chatClient.CompleteChatAsync(messages, options);
-        var finalContent  = finalResponse.Value.Content[0].Text;
-        var finalResult   = ParseAnalysisResult(finalContent, docType, sourceInfo);
+        using var finalCts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+        var finalSb = new StringBuilder();
+        await foreach (var update in
+            _chatClient.CompleteChatStreamingAsync(messages, options, finalCts.Token))
+        {
+            foreach (var part in update.ContentUpdate)
+                finalSb.Append(part.Text);
+        }
+        var finalContent = finalSb.ToString();
+        var finalResult  = ParseAnalysisResult(finalContent, docType, sourceInfo);
         ValidateOutputQuality(finalResult, docType);
         return finalResult;
     }
@@ -366,34 +392,146 @@ public class GroqService : IGroqService
 
     /// <summary>
     /// Yields JSON string candidates from the model response, from most to least specific.
+    /// For each candidate both the raw version and a "repaired" version (with literal
+    /// newlines inside string values escaped) are tried, because llama-3.1-8b-instant
+    /// frequently emits bare \n / \r characters inside multi-line string values which
+    /// makes the JSON syntactically invalid.
+    ///
     /// Strategy 1 — raw text (model returned clean JSON)
     /// Strategy 2 — extract from ```json ... ``` fence
     /// Strategy 3 — extract from ``` ... ``` fence
-    /// Strategy 4 — extract from first { to last } (handles any leading/trailing prose)
+    /// Strategy 4 — brace extraction: first { to the matching top-level }
+    ///              Skips braces inside quoted strings so embedded JSON examples
+    ///              (e.g. requestBody / responseBody fields) don't fool the extractor.
     /// </summary>
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
     {
+        // Helper: yield the candidate and, if different, its repaired variant
+        static IEnumerable<string> WithRepaired(string candidate)
+        {
+            yield return candidate;
+            var repaired = FixLiteralNewlinesInStrings(candidate);
+            if (repaired != candidate)
+                yield return repaired;
+        }
+
         var trimmed = raw.Trim();
 
-        // 1. Raw text as-is
-        yield return trimmed;
+        // 1. Raw text as-is (+ repaired)
+        foreach (var c in WithRepaired(trimmed)) yield return c;
 
         // 2. ```json ... ``` fence (Groq/LLaMA often wraps output this way)
         var jsonFence = Regex.Match(raw, @"```json\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
         if (jsonFence.Success)
-            yield return jsonFence.Groups[1].Value.Trim();
+            foreach (var c in WithRepaired(jsonFence.Groups[1].Value.Trim())) yield return c;
 
         // 3. Generic ``` ... ``` fence
         var genericFence = Regex.Match(raw, @"```\s*([\s\S]*?)\s*```");
         if (genericFence.Success)
-            yield return genericFence.Groups[1].Value.Trim();
+            foreach (var c in WithRepaired(genericFence.Groups[1].Value.Trim())) yield return c;
 
-        // 4. Brace extraction — grab everything from first { to last }
-        //    This is the most resilient: works even when the model adds a preamble
-        var firstBrace = raw.IndexOf('{');
-        var lastBrace  = raw.LastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace)
-            yield return raw[firstBrace..(lastBrace + 1)];
+        // 4. Brace extraction — find matching top-level { ... }
+        //    Walks character by character, tracking string context so that
+        //    braces inside "requestBody": "{ ... }" strings are not counted.
+        var extracted = ExtractTopLevelJson(raw);
+        if (extracted != null && extracted != trimmed)
+            foreach (var c in WithRepaired(extracted)) yield return c;
+    }
+
+    /// <summary>
+    /// Repairs a JSON string where the LLM has emitted literal newline / carriage-return /
+    /// tab characters inside quoted string values (instead of the required \n / \r / \t
+    /// escape sequences).  Walks the text character-by-character, tracking whether the
+    /// cursor is inside a JSON string, and escapes any bare control characters it finds.
+    /// </summary>
+    private static string FixLiteralNewlinesInStrings(string json)
+    {
+        var sb      = new StringBuilder(json.Length + 64);
+        bool inStr  = false;
+        bool escaped = false;
+
+        foreach (var ch in json)
+        {
+            if (escaped)
+            {
+                // Whatever follows a backslash is the escape payload — emit verbatim
+                sb.Append(ch);
+                escaped = false;
+                continue;
+            }
+
+            if (ch == '\\' && inStr)
+            {
+                sb.Append(ch);
+                escaped = true;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inStr = !inStr;
+                sb.Append(ch);
+                continue;
+            }
+
+            if (inStr)
+            {
+                // Replace literal control characters with valid JSON escape sequences
+                switch (ch)
+                {
+                    case '\n': sb.Append("\\n");  break;
+                    case '\r': sb.Append("\\r");  break;
+                    case '\t': sb.Append("\\t");  break;
+                    default:   sb.Append(ch);     break;
+                }
+            }
+            else
+            {
+                sb.Append(ch);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Walks <paramref name="raw"/> and returns the substring from the first top-level
+    /// '{' to its matching '}', ignoring braces that appear inside quoted strings.
+    /// Returns null if no balanced pair is found.
+    /// </summary>
+    private static string? ExtractTopLevelJson(string raw)
+    {
+        int start  = -1;
+        int depth  = 0;
+        bool inStr = false;
+
+        for (int i = 0; i < raw.Length; i++)
+        {
+            var ch = raw[i];
+
+            // Toggle string mode on unescaped "
+            if (ch == '"' && (i == 0 || raw[i - 1] != '\\'))
+            {
+                inStr = !inStr;
+                continue;
+            }
+
+            if (inStr) continue;   // ignore everything inside strings
+
+            if (ch == '{')
+            {
+                if (depth == 0) start = i;
+                depth++;
+            }
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0 && start >= 0)
+                    return raw[start..(i + 1)];
+            }
+        }
+
+        return null;
     }
 
     private static bool HasMeaningfulContent(AnalysisResult r) =>
@@ -415,7 +553,7 @@ public class GroqService : IGroqService
             if (!string.IsNullOrWhiteSpace(t.Description))
             {
                 sb.AppendLine("Description:");
-                sb.AppendLine(Truncate(t.Description, 2000));
+                sb.AppendLine(Truncate(t.Description, 600));
             }
 
             if (t.AcceptanceCriteria.Count > 0)
@@ -440,9 +578,9 @@ public class GroqService : IGroqService
 
             if (t.Comments.Count > 0)
             {
-                sb.AppendLine("Recent Comments:");
-                foreach (var c in t.Comments.Take(5))
-                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 300)}");
+                sb.AppendLine("Comments:");
+                foreach (var c in t.Comments.Take(2))
+                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 100)}");
             }
 
             sb.AppendLine();
@@ -476,23 +614,19 @@ public class GroqService : IGroqService
         // Recent commits
         if (repo.RecentCommits.Count > 0)
         {
-            sb.AppendLine("\nRecent Commits (last 15):");
-            foreach (var c in repo.RecentCommits.Take(15))
-            {
-                sb.AppendLine($"  [{c.Sha}] {c.Date:yyyy-MM-dd} {c.Author}: {c.Message}");
-                if (c.ChangedFiles.Count > 0)
-                    sb.AppendLine($"    Files: {string.Join(", ", c.ChangedFiles.Take(5))}");
-            }
+            sb.AppendLine("\nRecent Commits:");
+            foreach (var c in repo.RecentCommits.Take(8))
+                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {c.Message}");
         }
 
         // Source file summaries
         if (repo.Files.Count > 0)
         {
-            sb.AppendLine($"\nSource Files ({repo.Files.Count} analysed):");
-            foreach (var f in repo.Files.Where(x => x.Content != null).Take(20))
+            sb.AppendLine($"\nSource Files:");
+            foreach (var f in repo.Files.Where(x => x.Content != null).Take(8))
             {
                 sb.AppendLine($"\n--- {f.Path} ---");
-                sb.AppendLine(Truncate(f.Content!, 800));
+                sb.AppendLine(Truncate(f.Content!, 400));
             }
         }
 
@@ -509,350 +643,64 @@ public class GroqService : IGroqService
             AppendStructure(sb, child, indent + 1);
     }
 
-    // ─── Per-doc-type: focus instructions (user prompt prefix) ───────────────────
+    // ─── Per-doc-type: focus instructions (kept short to save tokens) ───────────────
 
     private static string GetFocusInstructions(DocumentationType docType) => docType switch
     {
-        DocumentationType.UserGuide => """
-            Produce a USER GUIDE for this feature/product.
+        DocumentationType.UserGuide =>
+            "Write a USER GUIDE for non-technical users. Plain English, no jargon. Include step-by-step instructions, common Q&A, and troubleshooting tips.",
 
-            TARGET AUDIENCE: Non-technical end users — business users, customers, or general staff
-            with NO programming knowledge. They have never seen source code.
+        DocumentationType.TechnicalDocumentation =>
+            "Write TECHNICAL DOCUMENTATION for developers. Use actual class names, methods, and config keys from SOURCE DATA. Include setup commands and configuration details.",
 
-            TONE: Friendly, warm, jargon-free. Replace every technical term with plain English.
-            Write "click the blue Submit button" not "invoke the POST endpoint".
+        DocumentationType.ApiDocumentation =>
+            "Write API REFERENCE for developers. Document every endpoint with method, path, request and response JSON examples from SOURCE DATA.",
 
-            REQUIRED SECTIONS (use ## headings in the userGuide field):
-            ## What This Does          — 2-3 sentences: benefit to the user, not technical detail
-            ## Getting Started         — prerequisites the user needs (account, access, browser)
-            ## Step-by-Step Guide      — numbered steps for every task; describe what the user SEES at each step
-            ## Common Questions        — 3+ real questions a user would ask, with clear answers
-            ## Troubleshooting         — 3+ common problems and exactly how to fix them
+        DocumentationType.ArchitectureOverview =>
+            "Write an ARCHITECTURE OVERVIEW for senior engineers. Cover components, data flow, external integrations, and technology choices from SOURCE DATA.",
 
-            FEATURES ARRAY: Name each feature as the user knows it (e.g. "Generate a Document",
-            "Download PDF"). Describe the user benefit. UsageExample must be a realistic
-            scenario: "Sarah opens the app, selects JIRA Only, types PROJ-42, clicks Create Document,
-            then downloads the PDF in 30 seconds."
-
-            EXCLUDE: Source code, architecture, class names, API internals, deployment steps,
-            database schemas, configuration files.
-            """,
-
-        DocumentationType.TechnicalDocumentation => """
-            Produce TECHNICAL DOCUMENTATION for this codebase/feature.
-
-            TARGET AUDIENCE: Software engineers, DevOps engineers, and maintainers who will
-            build on, debug, or deploy this system.
-
-            TONE: Precise, dense, engineering-focused. Reference actual class names, method
-            signatures, file paths, and config keys visible in the source data.
-
-            REQUIRED SECTIONS:
-            technicalOverview   — explain the system's purpose, runtime environment, and key design
-                                  decisions; name the actual projects/modules and their responsibilities
-            architectureDescription — describe components and their relationships; explain data flow
-                                  from API request to PDF response; list integration points
-            setupInstructions   — every command verbatim:
-                                  ## Prerequisites (SDK versions, tools)
-                                  ## Clone & Build (git clone, dotnet build, dotnet restore)
-                                  ## Configuration (which file to edit, which keys to set)
-                                  ## Running Locally (dotnet run, which port, what to open)
-            configurationGuide  — every key in appsettings.json: name, type, example value, effect
-
-            FEATURES ARRAY: One entry per major module/service (e.g. "JIRA Integration",
-            "Groq Analysis", "PDF Generation"). Description = which classes are involved and
-            how they work. UsageExample = code snippet or curl command.
-
-            API ENDPOINTS: Document every controller endpoint found in the source with realistic
-            request/response JSON matching the actual model properties.
-
-            DEPENDENCIES: Every NuGet package with version and specific reason it is used.
-            """,
-
-        DocumentationType.ApiDocumentation => """
-            Produce API REFERENCE DOCUMENTATION for this system.
-
-            TARGET AUDIENCE: Developers integrating with or consuming this API for the first time.
-            They need to be productive immediately — no guessing, no assumptions.
-
-            TONE: Concise, precise, reference-style. Every endpoint must be immediately usable.
-
-            REQUIRED CONTENT:
-            executiveSummary    — base URL, authentication method, content-type, brief purpose
-            technicalOverview   — authentication flow step-by-step; common headers; standard error
-                                  response shape; rate limits if known; API versioning
-
-            API ENDPOINTS ARRAY — document EVERY endpoint visible in the source code:
-            • method / path     — exact HTTP verb and full route (e.g. POST /api/documentation/generate)
-            • description       — what it does, when to call it, any side effects, auth required
-            • requestBody       — complete JSON with EVERY field, realistic example values, and
-                                  comments showing required vs optional (embed as JSON string)
-            • responseBody      — success shape AND error shape (400, 500) with realistic values
-
-            EXCLUDE: UI/UX instructions, business narrative, deployment steps.
-            """,
-
-        DocumentationType.ArchitectureOverview => """
-            Produce an ARCHITECTURE OVERVIEW for this system.
-
-            TARGET AUDIENCE: Senior engineers, architects, and tech leads who need to understand
-            the system holistically before extending, scaling, or reviewing it.
-
-            TONE: High-level, strategic. Use diagram-description prose. Name actual services.
-
-            REQUIRED SECTIONS (use ## headings in architectureDescription):
-            ## System Overview      — what problem it solves; overall design philosophy
-            ## Components           — every project/service; its role; what it owns
-            ## Data Flow            — trace a request end-to-end from UI input to PDF download
-            ## External Integrations— name actual third-party services, APIs, their purpose
-            ## Technology Stack     — each major technology, version, and WHY it was chosen
-            ## Scalability & Limits — current bottlenecks; where horizontal scaling would help
-            ## Security Considerations — credential handling, CORS, auth, known gaps
-            ## Recommendations      — top 3 architectural improvements with rationale
-
-            DEPENDENCIES: Name actual libraries with their architectural role
-            (e.g. "LibGit2Sharp 0.30 — used for local Git repo analysis and branch checkout").
-
-            EXCLUDE: Step-by-step user tasks, low-level implementation code, line-by-line analysis.
-            """,
-
-        _ => """
-            Produce COMPREHENSIVE FULL DOCUMENTATION covering all audiences.
-
-            This document will be read by business stakeholders, end users, developers, and architects.
-            Every section must be complete and audience-appropriate.
-
-            REQUIRED CONTENT:
-            executiveSummary        — what the system is, who uses it, and the core value it delivers
-            technicalOverview       — architecture, key components, technology stack, data flow
-            architectureDescription — components, integrations, communication patterns, scalability notes
-            userGuide               — plain-English step-by-step guide; ## sections; numbered steps
-            setupInstructions       — every command needed to clone, configure, and run locally
-            configurationGuide      — every config key with type, example value, and effect
-            features[]              — every feature with a user-friendly name, description, and example
-            apiEndpoints[]          — every endpoint with realistic request/response JSON
-            dependencies[]          — every package with version and purpose
-            recommendations[]       — at least 5 actionable improvement suggestions
-            knownIssues[]           — real limitations and technical debt observed in the source
-
-            Quality bar: a developer reading this should be able to run the system locally within
-            30 minutes. A non-technical manager should understand what it does in 2 minutes.
-            """
+        _ =>
+            "Write COMPREHENSIVE DOCUMENTATION covering all audiences: executive summary, technical details, user guide, setup, API endpoints, and architecture."
     };
 
-    // ─── Per-doc-type: tailored JSON schemas ──────────────────────────────────────
+    // ─── Per-doc-type: compact JSON schemas (short hints save tokens) ───────────────
 
     private static string GetJsonSchema(DocumentationType docType) => docType switch
     {
-        DocumentationType.UserGuide => """
-            {
-              "executiveSummary": "3 plain-English sentences: (1) what this product does, (2) who uses it, (3) the core value it delivers. No technical terms. Example: 'Docu-Genius automatically creates professional documentation from your project's JIRA tickets and source code. It is designed for project managers, developers, and business analysts who need up-to-date docs without writing them manually. In under a minute, you get a polished PDF ready to share with your team or stakeholders.'",
-              "userGuide": "## Getting Started\n[Prerequisites and access requirements]\n\n## How to Create a Document\n1. [First step with what user sees]\n2. [Second step]\n3. [Continue for every step]\n\n## Understanding Your Results\n[What the output looks like, how to read it]\n\n## Downloading and Sharing\n[Steps to download and share the PDF]\n\n## Common Questions\n[3+ Q&A pairs]\n\n## Troubleshooting\n[3+ problems and exact solutions]",
-              "features": [
-                {
-                  "name": "User-facing feature name (e.g. 'Generate from JIRA Ticket')",
-                  "description": "Plain-English benefit: what problem it solves for the user. No technical terms.",
-                  "usageExample": "Concrete scenario: 'Maria selects JIRA Only, types TMS-45 into the ticket field, adds context note about sprint 3, clicks Create Document, and downloads a 12-page PDF within 40 seconds.'"
-                }
-              ],
-              "recommendations": [
-                "Practical tip a user should know — e.g. 'For best results, ensure your JIRA ticket has a detailed description and acceptance criteria before generating documentation.'"
-              ],
-              "knownIssues": [
-                "Known limitation with its workaround — e.g. 'If the document shows incomplete content, the JIRA ticket may have had minimal description. Add more detail to the ticket and regenerate.'"
-              ]
-            }
-            """,
+        DocumentationType.UserGuide =>
+            """{"executiveSummary":"what/who/value","userGuide":"## sections with numbered steps","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.TechnicalDocumentation => """
-            {
-              "executiveSummary": "3-4 sentences: purpose of the system, technology stack (framework + language + key libraries), deployment target, and scope. Reference actual project names from the source.",
-              "technicalOverview": "## System Purpose\n[What problem this solves and for whom]\n\n## Project Structure\n[Each project/module, its responsibility, and key classes]\n\n## Request Lifecycle\n[Step-by-step: how a request flows from entry point through services to response]\n\n## Key Design Decisions\n[Why specific patterns/libraries were chosen — reference actual names from source]",
-              "architectureDescription": "## Architecture Pattern\n[Pattern used — e.g. layered, clean, microservices — with justification]\n\n## Component Breakdown\n[Every project with its role and dependencies]\n\n## Data Flow\n[Trace a specific use case end-to-end with actual class/method names]\n\n## External Integrations\n[Every third-party service: name, SDK, purpose, authentication method]",
-              "setupInstructions": "## Prerequisites\n- [SDK name and minimum version]\n- [Other required tools]\n\n## Clone the Repository\n```\ngit clone [url]\ncd [folder]\n```\n\n## Restore Dependencies\n```\ndotnet restore\n```\n\n## Configure Settings\n1. Copy appsettings.json to appsettings.Development.json\n2. Fill in: [list every key that needs a real value]\n\n## Run Locally\n```\ndotnet run --project src/[ProjectName]\n```\nAPI available at: [url]\n\n## Verify\n[How to confirm it is working — e.g. open Swagger at /swagger]",
-              "configurationGuide": "## appsettings.json Keys\n\n[Section.Key] — Type: string | Required: yes | Default: none\nEffect: [what this controls]\nExample: \"[realistic example value]\"\n\n[Repeat for every key in the source]",
-              "features": [
-                {
-                  "name": "Actual module name from source (e.g. 'JIRA Integration Service')",
-                  "description": "Technical description: which interface/class implements this, what it does internally, key methods, error handling approach.",
-                  "usageExample": "Code snippet or curl command showing real usage with actual field names from the source model."
-                }
-              ],
-              "apiEndpoints": [
-                {
-                  "method": "POST",
-                  "path": "/api/actual/path",
-                  "description": "What this endpoint does, when to call it, what it returns, required auth headers.",
-                  "requestBody": "{ \"actualField1\": \"string value\", \"actualField2\": 0, \"optionalField\": null }",
-                  "responseBody": "{ \"success\": true, \"actualResponseField\": \"value\", \"errorMessage\": null }"
-                }
-              ],
-              "dependencies": [
-                "PackageName vX.Y.Z — specific reason: e.g. 'LibGit2Sharp v0.30.0 — used to clone remote repositories and enumerate commit history for analysis'"
-              ],
-              "recommendations": [
-                "Specific, actionable improvement with rationale — e.g. 'Add IMemoryCache to cache JIRA ticket data for 5 minutes to reduce API calls during batch processing.'"
-              ],
-              "knownIssues": [
-                "Specific technical issue observed in the source with suggested fix — e.g. 'The Git clone directory is never cleaned up after analysis, causing disk usage to grow. Add a cleanup step in GitService after analysis completes.'"
-              ]
-            }
-            """,
+        DocumentationType.TechnicalDocumentation =>
+            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults/effects","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.ApiDocumentation => """
-            {
-              "executiveSummary": "Base URL, authentication method (Bearer token / API key / none), content-type (application/json), and 1-sentence purpose. Example: 'The Docu-Genius API (base URL: https://localhost:60735) accepts JSON requests authenticated via CORS from approved origins. It generates AI-powered documentation PDFs from JIRA tickets and Git repositories.'",
-              "technicalOverview": "## Authentication\n[Step-by-step: how to authenticate, which header, what value format]\n\n## Common Headers\n[Every header with name, value format, and whether required]\n\n## Error Response Format\n[Standard error shape with field descriptions]\nExample: { \"message\": \"string\", \"traceId\": \"string\" }\n\n## HTTP Status Codes Used\n[Every status code returned by this API with meaning]",
-              "apiEndpoints": [
-                {
-                  "method": "POST",
-                  "path": "/api/actual/route",
-                  "description": "Full description: what this does, when to call it, prerequisites, side effects (e.g. 'Creates a PDF file on the server and returns its filename. The file is available for download via GET /api/documentation/download/{fileName} for the duration of the server session.').",
-                  "requestBody": "{ \"requiredField\": \"actual-example-value\", \"anotherRequired\": \"JiraOnly\", \"optionalField\": null }",
-                  "responseBody": "{ \"success\": true, \"fileName\": \"PROJ-123_FullDocumentation_20250421.pdf\", \"filePath\": \"./output/PROJ-123_FullDocumentation_20250421.pdf\" }"
-                }
-              ],
-              "dependencies": [
-                "External service name — how this API depends on it and what happens if it is unavailable"
-              ],
-              "recommendations": [
-                "Specific API improvement — e.g. 'Add a GET /api/documentation/status/{jobId} endpoint to support async generation with polling instead of a blocking 60-second POST request.'"
-              ],
-              "knownIssues": [
-                "Real API limitation — e.g. 'The /generate endpoint blocks the HTTP connection for the full generation time (20-60 seconds). Large repos or multiple tickets may cause client timeouts. Implement background jobs with a polling endpoint to fix this.'"
-              ]
-            }
-            """,
+        DocumentationType.ApiDocumentation =>
+            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
 
-        DocumentationType.ArchitectureOverview => """
-            {
-              "executiveSummary": "1 substantial paragraph: what the system is, its design philosophy (e.g. clean architecture, layered), the core workflow from user input to output, and the primary technology choices.",
-              "technicalOverview": "## Technology Stack\n[Every major technology with version and WHY it was chosen over alternatives]\n\n## Project Dependencies\n[How projects reference each other — which project depends on which]\n\n## Runtime Environment\n[OS, SDK version, hosting model, expected load]",
-              "architectureDescription": "## System Overview\n[Design goals and architectural constraints]\n\n## Components and Responsibilities\n[Every project/service with its single responsibility and the interfaces it exposes]\n\n## Data Flow\n[Trace the full lifecycle: UI input → API → JIRA/Git fetch → Groq analysis → PDF generation → download]\n\n## External Integrations\n[Every third-party system: name, purpose, authentication, failure behaviour]\n\n## Scalability Considerations\n[Current bottlenecks, where the system would break under load, recommended fixes]\n\n## Security Posture\n[Credential handling, CORS configuration, known gaps, recommendations]",
-              "configurationGuide": "Infrastructure-level configuration: environment variables, server settings, CORS allowed origins, output directory, and how to configure each for production vs development.",
-              "dependencies": [
-                "LibraryName vX.Y — architectural role: e.g. 'QuestPDF v2024.10.2 — chosen for its code-first PDF generation API that integrates naturally with C# models, avoiding template files and allowing dynamic layout.'"
-              ],
-              "recommendations": [
-                "Architectural recommendation with clear rationale and estimated effort — e.g. 'Extract document generation into a background job (e.g. Hangfire) to eliminate the blocking 60-second HTTP request. Estimated effort: 1-2 days. Benefit: eliminates timeout risk and enables progress streaming.'"
-              ],
-              "knownIssues": [
-                "Architectural weakness observed in source — e.g. 'All services are registered as Singleton, including GitService which clones repos to disk. Concurrent requests will share state and may conflict. Switch Git operations to Scoped or use a semaphore.'"
-              ]
-            }
-            """,
+        DocumentationType.ArchitectureOverview =>
+            """{"executiveSummary":"system/philosophy/stack","technicalOverview":"## Stack ## Dependencies ## Runtime","architectureDescription":"## Overview ## Components ## Data Flow ## Integrations ## Scalability ## Security","configurationGuide":"infra/env/deployment config","dependencies":["Library vX — architectural role"],"recommendations":[""],"knownIssues":[""]}""",
 
-        _ /* FullDocumentation */ => """
-            {
-              "executiveSummary": "3-4 sentences suitable for a non-technical manager AND a developer: what the system does, who uses it, the technology stack, and the core value delivered.",
-              "technicalOverview": "## Purpose and Scope\n[Problem solved, system boundaries]\n\n## Architecture\n[Key components and how they interact — reference actual names]\n\n## Request Lifecycle\n[End-to-end flow with actual class/method names]\n\n## Technology Stack\n[Every major technology with justification]",
-              "architectureDescription": "## Components\n[Every project with its responsibility]\n\n## Data Flow\n[UI → API → integrations → output — step by step]\n\n## External Services\n[Every third-party with auth method and failure behaviour]\n\n## Scalability & Security\n[Current limits and known gaps]",
-              "userGuide": "## What This Does\n[Plain-English benefit]\n\n## Getting Started\n[Prerequisites for end users]\n\n## Step-by-Step: Create a Document\n1. [Step with what user sees]\n2. [Continue all steps]\n\n## Download Your Document\n[Steps]\n\n## Troubleshooting\n[3+ common problems with solutions]",
-              "setupInstructions": "## Prerequisites\n- [SDK + version]\n- [Tools]\n\n## Clone & Build\n```\ngit clone [url]\ndotnet restore\ndotnet build\n```\n\n## Configure\n[Which file, which keys, example values]\n\n## Run\n```\ndotnet run --project src/[Project]\n```",
-              "configurationGuide": "[Every appsettings key: name, type, example, effect]",
-              "features": [
-                {
-                  "name": "Actual feature name from source",
-                  "description": "Technical + user-facing description. Reference actual classes and user benefit.",
-                  "usageExample": "Concrete realistic example — code snippet OR user scenario."
-                }
-              ],
-              "apiEndpoints": [
-                {
-                  "method": "POST",
-                  "path": "/api/actual/path",
-                  "description": "Purpose, required fields, side effects.",
-                  "requestBody": "{ \"actualField\": \"realistic-value\", \"sourceType\": \"JiraOnly\" }",
-                  "responseBody": "{ \"success\": true, \"fileName\": \"output.pdf\" }"
-                }
-              ],
-              "dependencies": [
-                "PackageName vX.Y — specific purpose in this project"
-              ],
-              "recommendations": [
-                "Specific actionable improvement with rationale and estimated effort"
-              ],
-              "knownIssues": [
-                "Specific issue from source with suggested fix"
-              ]
-            }
-            """
+        _ /* FullDocumentation */ =>
+            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Services ## Security","userGuide":"## sections with steps","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
     };
 
-    // ─── System prompt (role + output rules) ─────────────────────────────────────
+    // ─── System prompt (concise — every token counts on free tier) ──────────────────
 
     private static string GetSystemPrompt(DocumentationType docType)
     {
         var role = docType switch
         {
-            DocumentationType.UserGuide =>
-                "You are a friendly technical writer creating documentation for non-technical business users. " +
-                "You never use programming or technical jargon. Write as if explaining to someone who has " +
-                "never seen source code — describe what the user sees and does, not how it is built.",
-
-            DocumentationType.TechnicalDocumentation =>
-                "You are a senior software engineer and technical writer creating internal developer documentation. " +
-                "Be precise, reference the actual class names, method signatures, file paths, and configuration " +
-                "keys visible in the source data. Assume the reader can read code and wants depth, not generalities.",
-
-            DocumentationType.ApiDocumentation =>
-                "You are an API documentation specialist creating a reference guide developers can use to " +
-                "integrate immediately. Document every endpoint found in the source with complete, realistic " +
-                "JSON request and response examples — not generic placeholders.",
-
-            DocumentationType.ArchitectureOverview =>
-                "You are a principal software architect creating an architecture overview for senior engineers " +
-                "and tech leads. Name actual components, services, databases, and communication channels from " +
-                "the source. Explain design decisions, trade-offs, and how the pieces fit together.",
-
-            _ =>
-                "You are an expert technical writer creating comprehensive documentation for a mixed audience " +
-                "of business users and developers. Keep user-facing sections jargon-free and step-by-step; " +
-                "keep technical sections precise, deep, and referencing actual source details."
+            DocumentationType.UserGuide             => "You are a technical writer for non-technical users.",
+            DocumentationType.TechnicalDocumentation => "You are a senior software engineer writing developer docs.",
+            DocumentationType.ApiDocumentation      => "You are an API documentation specialist.",
+            DocumentationType.ArchitectureOverview  => "You are a principal software architect.",
+            _                                        => "You are a technical writer covering all audiences."
         };
 
-        return role + """
-
-
-            ═══════════════════════════════════════════════════════
-            CONTENT QUALITY STANDARDS — these are strictly enforced
-            ═══════════════════════════════════════════════════════
-
-            1. SPECIFICITY — use actual names and values from the source data, never invent them.
-               ✗ WRONG: "The service processes user requests and returns results."
-               ✓ RIGHT: "The DocumentationController.GenerateDocumentation() endpoint accepts a POST
-                          request containing SourceType, JiraTicketIds, and GitRepositoryUrl, then
-                          orchestrates calls to JiraService, GroqService, and PdfService in sequence."
-
-            2. DEPTH — each major text field must be substantive:
-               • executiveSummary       → minimum 3 sentences covering WHAT, WHY, and WHO
-               • technicalOverview      → minimum 3 paragraphs; use ## headings for each topic
-               • architectureDescription→ minimum 3 paragraphs; describe components, data flow, integrations
-               • userGuide              → minimum 4 numbered steps per task; include what the user sees
-               • setupInstructions      → every command listed explicitly; no "install dependencies" without the command
-               • configurationGuide     → every config key, its type, default value, and effect
-
-            3. ACCURACY — never hallucinate. Only describe what is explicitly present in the source.
-               If data is sparse, write: "Based on available source information, [what is known].
-               Full documentation of [area] would require [what is missing]."
-
-            4. ARRAYS — populate every list with at least 2–3 substantive items when the source supports it.
-               Empty arrays [] are only acceptable when the source genuinely has nothing to list.
-
-            5. NO TRUNCATION — write complete sentences; never end with "etc.", "…", or "and more".
-               If a section needs more space, keep writing — do not cut it short.
-
-            ═══════════════════════════════════════════════════════
-            OUTPUT FORMAT — follow exactly
-            ═══════════════════════════════════════════════════════
-
-            • Respond with ONLY a raw JSON object. Zero prose, zero explanations, zero ```json fences.
-            • First character must be {, last character must be }. Nothing before or after.
-            • String field values use markdown: ## for headings, - for bullets, 1. 2. 3. for steps.
-            • Do NOT embed JSON objects inside string values EXCEPT apiEndpoints.requestBody and
-              apiEndpoints.responseBody, which must contain realistic JSON payload examples.
-            • requestBody / responseBody: show actual field names and realistic value types — not descriptions.
-            """;
+        return $"{role} Rules: " +
+               "1) Document ONLY the project in SOURCE DATA — never Docu-Genius or this tool. " +
+               "2) Output ONLY a raw JSON object, first char { last char }, no fences. " +
+               "3) Use ## headings and lists inside string values. " +
+               "4) Use real names and values from SOURCE DATA, not generic placeholders.";
     }
 
     private static string Truncate(string text, int maxLength) =>

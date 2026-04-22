@@ -110,38 +110,26 @@
 
     </div>
 
-
-    <!-- FILE HISTORY GRID -->
+    <!-- FILE HISTORY LIST -->
     @if (_files.Any())
     {
         <div style="margin-top:25px">
             <p class="dg-section-title">Generated Files</p>
 
-            <table class="dg-table">
-                <thead>
-                    <tr>
-                        <th>File Name</th>
-                        <th>Created On</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @foreach (var f in _files)
-                    {
-                        <tr>
-                            <td>@f.FileName</td>
-                            <td>@f.CreatedOn.ToString("dd-MMM-yyyy HH:mm")</td>
-                            <td>
-                                <button class="dg-btn-download"
-                                        @onclick="() => DownloadPdf(f.FileName)">
-                                    Download
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="dg-files-list">
+                @foreach (var f in _files)
+                {
+                    <div class="dg-file-row">
+                        <span class="dg-file-icon">📄</span>
+                        <span class="dg-file-name" title="@f.FileName">@f.FileName</span>
+                        <span class="dg-file-date">@f.CreatedOn.ToString("dd MMM yyyy, HH:mm")</span>
+                        <button class="dg-btn-download dg-btn-download-sm"
+                                @onclick="() => DownloadPdf(f.FileName)">
+                            ⬇ Download
+                        </button>
+                    </div>
+                }
+            </div>
         </div>
     }
 
@@ -157,8 +145,12 @@
             {
                 <div class="dg-progress">
                     <div class="dg-spinner"></div>
-                    <p>Generating document...</p>
+                    <p class="dg-status-text">@_statusMessage</p>
                 </div>
+
+                <button class="dg-btn-ghost" @onclick="CloseDialog">
+                    Hide
+                </button>
             }
 
             @if (_state == UiState.Success)
@@ -211,15 +203,62 @@
         text-align: center;
     }
 
-    .dg-table {
-        width: 100%;
-        border-collapse: collapse;
+    .dg-status-text {
+        margin: 10px 0 0;
+        font-size: 0.95rem;
+        color: #374151;
+        min-height: 1.4em;
+        transition: opacity 0.3s ease;
     }
 
-        .dg-table th, .dg-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
+    .dg-files-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .dg-file-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+
+    .dg-file-icon {
+        flex-shrink: 0;
+        font-size: 1.1rem;
+    }
+
+    .dg-file-name {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .dg-file-date {
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        color: #6b7280;
+        white-space: nowrap;
+    }
+
+    /* Compact download button used inside the file-history rows.
+       Overrides the full-width / large-padding defaults from app.css. */
+    .dg-btn-download-sm {
+        width: auto;
+        flex-shrink: 0;
+        padding: 6px 14px;
+        font-size: 0.82rem;
+        margin-top: 0;
+    }
 </style>
 
 @code {
@@ -228,6 +267,10 @@
     private UiState _state = UiState.Form;
 
     private bool _showDialog = false;
+
+    // ─── Live status ──────────────────────────────────────────────────────────────
+    private string _statusMessage = "⏳ Starting…";
+    private CancellationTokenSource? _pollingCts;
 
     private string _sourceType = "";
     private string _docType = "FullDocumentation";
@@ -277,46 +320,123 @@
     }
     private async Task Generate()
     {
-        _showDialog = true;
-        _state = UiState.Generating;
+        _showDialog      = true;
+        _state           = UiState.Generating;
+        _statusMessage   = "⏳ Starting…";
+
+        // Unique ID lets the server push status updates that we can poll
+        var jobId = Guid.NewGuid().ToString("N");
 
         var request = new GenerateRequest
         {
-            SourceType = _sourceType,
-            JiraTicketIds = _ticketIds,
+            SourceType       = _sourceType,
+            JiraTicketIds    = _ticketIds,
             GitRepositoryUrl = ShowGit ? _repoUrl : null,
-            GitBranch = _branch,
+            GitBranch        = _branch,
             DocumentationType = _docType,
             AdditionalContext = _additionalContext,
-            OutputFileName = _outputFileName
+            OutputFileName   = _outputFileName,
+            JobId            = jobId
         };
+
+        // Start background polling — fire-and-forget, cancelled when generate returns
+        _pollingCts = new CancellationTokenSource();
+        _ = PollStatusAsync(jobId, _pollingCts.Token);
 
         _result = await Api.GenerateDocumentAsync(request);
 
+        // Stop polling regardless of outcome
+        _pollingCts.Cancel();
+        _pollingCts.Dispose();
+        _pollingCts = null;
+
         if (_result.Success)
         {
-            _state = UiState.Success;
-            clear();
             var file = new FileRecord
             {
-                FileName = _result.FileName,
+                FileName  = _result.FileName,
                 CreatedOn = DateTime.Now
             };
 
             _files.Insert(0, file);
             await Storage.SaveFilesAsync(_files);
+
+            // Only pop the success dialog if the user hasn't already hidden it.
+            // If they clicked "Hide" while it was generating, the file now
+            // silently appears in the list below.
+            if (_showDialog)
+                _state = UiState.Success;
+            else
+                _state = UiState.Form;
         }
         else
         {
-            _state = UiState.Error;
+            _state        = UiState.Error;
             _errorMessage = _result.Error ?? "Error occurred";
+            // Always re-show the dialog for errors so the user sees what went wrong
+            _showDialog   = true;
         }
+    }
+
+    /// <summary>
+    /// Polls the server for the current job status every 1.5 s and updates
+    /// _statusMessage so the spinner dialog shows what the API is doing.
+    /// </summary>
+    private async Task PollStatusAsync(string jobId, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(1500, ct);
+
+                var status = await Api.GetJobStatusAsync(jobId);
+                if (!string.IsNullOrWhiteSpace(status) && status != _statusMessage)
+                {
+                    _statusMessage = status;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* normal cancellation — do nothing */ }
+        catch { /* polling errors are non-fatal; UI keeps last known status */ }
     }
 
     private void CloseDialog()
     {
+        // Clear the form only after a successful generation so the user can
+        // start fresh. On error, keep the fields so they can fix and retry.
+        if (_state == UiState.Success)
+            ResetForm();
+
         _showDialog = false;
-        _state = UiState.Form;
+
+        // If generation is still running, leave _state as Generating so
+        // Generate() can still resolve correctly when it finishes:
+        //   - Success → file is silently added to the list (no modal re-shown)
+        //   - Error   → modal is re-shown so the user still sees the error
+        if (_state != UiState.Generating)
+            _state = UiState.Form;
+    }
+
+    private void ResetForm()
+    {
+        _sourceType        = "";
+        _docType           = "FullDocumentation";
+        _repoUrl           = "";
+        _branch            = "";
+        _additionalContext = "";
+        _outputFileName    = "";
+        _ticketInput       = "";
+        _ticketIds         = new();
+        _result            = null;
+        _errorMessage      = "";
+        _statusMessage     = "⏳ Starting…";
+
+        // Cancel any in-flight polling (shouldn't happen, but defensive)
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+        _pollingCts = null;
     }
 
     private async Task DownloadPdf(string? fileName = null)

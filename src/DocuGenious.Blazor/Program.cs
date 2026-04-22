@@ -24,7 +24,13 @@ catch { /* DevTunnel config not present — using appsettings.json */ }
 
 var apiBase = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:60735/";
 
-builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });
+// Timeout must exceed the full server-side flow (JIRA fetch + Groq call + PDF generation).
+// Groq alone can take up to 2 minutes for large documents, so 3 minutes is the safe minimum.
+builder.Services.AddScoped(_ => new HttpClient
+{
+    BaseAddress = new Uri(apiBase),
+    Timeout     = TimeSpan.FromMinutes(3)
+});
 builder.Services.AddScoped<DocumentationApiService>();
 builder.Services.AddScoped<ValidationService>();
 builder.Services.AddSingleton<FileStorageService>();

@@ -2,6 +2,12 @@ namespace DocuGenious.Core.Models;
 
 public class DocumentationRequest
 {
+    /// <summary>
+    /// Client-supplied correlation ID used to poll /api/documentation/status/{jobId}
+    /// for live progress updates. Optional — if omitted, no status is tracked.
+    /// </summary>
+    public string? JobId { get; set; }
+
     public SourceType SourceType { get; set; }
     public string? JiraTicketId { get; set; }
     public List<string> JiraTicketIds { get; set; } = [];

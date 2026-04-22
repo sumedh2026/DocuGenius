@@ -26,6 +26,9 @@ public class GenerateRequest
 
     [JsonPropertyName("additionalContext")]
     public string? AdditionalContext { get; set; }
+
+    [JsonPropertyName("jobId")]
+    public string? JobId { get; set; }
 }
 
 // ─── Responses ───────────────────────────────────────────────────────────────

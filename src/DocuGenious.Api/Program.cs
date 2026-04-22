@@ -1,3 +1,4 @@
+using DocuGenious.Api.Services;
 using DocuGenious.Core.Configuration;
 using DocuGenious.Core.Interfaces;
 using DocuGenious.Integration.Git;
@@ -60,6 +61,7 @@ builder.Services.AddCors(options =>
 
 // ─── Services ─────────────────────────────────────────────────────────────────
 
+builder.Services.AddSingleton<JobStatusService>();
 builder.Services.AddSingleton<IJiraService, JiraService>();
 builder.Services.AddSingleton<IGitService, GitService>();
 builder.Services.AddSingleton<IGroqService, GroqService>();
