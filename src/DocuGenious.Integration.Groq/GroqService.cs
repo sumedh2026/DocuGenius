@@ -157,17 +157,22 @@ public class GroqService : IGroqService
             new UserChatMessage(truncatedUserPrompt)
         };
 
-        // Use the configured MaxTokens directly — no per-doc-type caps.
-        // With compound-beta (70K TPM, 8192 max output) there is plenty of room
-        // for all document types at full token depth.
+        // Cap output tokens so input + output never exceeds the model's per-minute
+        // token budget. This is critical for llama-3.1-8b-instant (TpmLimit = 6,000)
+        // where input alone can be 400-800 tokens, leaving ~5,200 for output.
+        // For compound-beta (TpmLimit = 70,000) the cap has no practical effect.
+        // Always guarantee at least 1,000 output tokens even on large prompts.
         var estimatedInputTokens = (systemPrompt.Length + truncatedUserPrompt.Length) / 4;
+        var effectiveMaxTokens   = Math.Max(1000,
+            Math.Min(_settings.MaxTokens, _settings.TpmLimit - estimatedInputTokens - 200));
+
         _logger.LogInformation(
             "Groq call: ~{Input} input tokens, {Output} max output tokens (model: {Model})",
-            estimatedInputTokens, _settings.MaxTokens, _settings.Model);
+            estimatedInputTokens, effectiveMaxTokens, _settings.Model);
 
         var options = new ChatCompletionOptions
         {
-            MaxOutputTokenCount = _settings.MaxTokens,
+            MaxOutputTokenCount = effectiveMaxTokens,
             Temperature         = 0.4f
         };
 
@@ -238,7 +243,7 @@ public class GroqService : IGroqService
                 throw new InvalidOperationException(
                     $"Groq rate limit exceeded for model '{_settings.Model}' " +
                     $"({_settings.TpmLimit:N0} TPM on the free plan). " +
-                    $"This request used approximately {estimatedInputTokens + _settings.MaxTokens} tokens. " +
+                    $"This request used approximately {estimatedInputTokens + effectiveMaxTokens} tokens. " +
                     $"{hint} " +
                     $"You can also reduce Groq:MaxTokens in appsettings.json, " +
                     $"or upgrade your plan at https://console.groq.com", ex);
@@ -248,7 +253,7 @@ public class GroqService : IGroqService
                 throw new InvalidOperationException(
                     $"The request exceeded the Groq token limit for model '{_settings.Model}' " +
                     $"({_settings.TpmLimit:N0} TPM). " +
-                    $"Estimated size was {estimatedInputTokens + _settings.MaxTokens} tokens. " +
+                    $"Estimated size was {estimatedInputTokens + effectiveMaxTokens} tokens. " +
                     $"Try selecting fewer JIRA tickets, a more focused document type, " +
                     $"or upgrading your plan at https://console.groq.com/settings/billing.", ex);
             }
