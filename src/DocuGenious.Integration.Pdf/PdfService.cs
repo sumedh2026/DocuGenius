@@ -309,14 +309,12 @@ public class PdfService : IPdfService
     /// </summary>
     private static void RenderMarkdown(IContainer container, string raw)
     {
-        // If the raw text looks like a JSON dump (fallback path), render it as a code block
+        // If the field content is actual valid JSON (raw-fallback path), convert it to
+        // readable markdown prose instead of rendering it as a monochrome code block.
         var trimmed = raw.Trim();
-        if ((trimmed.StartsWith("{") && trimmed.EndsWith("}")) ||
-            (trimmed.StartsWith("[") && trimmed.EndsWith("]")))
+        if (IsActualJson(trimmed))
         {
-            container.Background(CodeBg).Padding(8)
-                .Text(trimmed).FontFamily("Courier New").FontSize(8).FontColor(CodeFg);
-            return;
+            raw = ConvertJsonToMarkdown(trimmed);
         }
 
         var blocks = ParseMarkdownBlocks(NormalizeInlineNumberedLists(raw));
@@ -782,6 +780,103 @@ public class PdfService : IPdfService
         }
 
         return sb.ToString().Trim();
+    }
+
+    // ─── JSON-to-markdown conversion (fallback safety net) ───────────────────────
+
+    /// <summary>
+    /// Returns true only when <paramref name="text"/> is syntactically valid JSON
+    /// (i.e. actually parseable — not just any string that starts with '{').
+    /// </summary>
+    private static bool IsActualJson(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim();
+        if ((!t.StartsWith("{") || !t.EndsWith("}")) &&
+            (!t.StartsWith("[") || !t.EndsWith("]")))
+            return false;
+        return TryParseJson(t) != null;
+    }
+
+    /// <summary>
+    /// Converts an <see cref="AnalysisResult"/>-shaped JSON object into readable markdown
+    /// prose so that the PDF renders human-readable sections instead of raw JSON code.
+    /// </summary>
+    private static string ConvertJsonToMarkdown(string json)
+    {
+        try
+        {
+            var opts = new System.Text.Json.JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling     = System.Text.Json.JsonCommentHandling.Skip
+            };
+            using var doc = System.Text.Json.JsonDocument.Parse(json, opts);
+
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return json;
+
+            var sb = new StringBuilder();
+
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                switch (prop.Value.ValueKind)
+                {
+                    case System.Text.Json.JsonValueKind.String:
+                        var str = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(str))
+                        {
+                            sb.AppendLine($"## {CamelCaseToTitle(prop.Name)}");
+                            sb.AppendLine(str);
+                            sb.AppendLine();
+                        }
+                        break;
+
+                    case System.Text.Json.JsonValueKind.Array:
+                        var arrItems = prop.Value.EnumerateArray().ToList();
+                        if (arrItems.Count == 0) break;
+
+                        sb.AppendLine($"## {CamelCaseToTitle(prop.Name)}");
+                        foreach (var item in arrItems)
+                        {
+                            if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                            {
+                                sb.AppendLine($"- {item.GetString()}");
+                            }
+                            else if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            {
+                                if (item.TryGetProperty("name", out var nameProp))
+                                    sb.AppendLine($"### {nameProp.GetString()}");
+                                if (item.TryGetProperty("description", out var descProp))
+                                    sb.AppendLine(descProp.GetString());
+                                if (item.TryGetProperty("usageExample", out var exProp))
+                                    sb.AppendLine($"*Example:* {exProp.GetString()}");
+                                if (item.TryGetProperty("method", out var methProp) &&
+                                    item.TryGetProperty("path",   out var pathProp))
+                                    sb.AppendLine($"**{methProp.GetString()?.ToUpper()} {pathProp.GetString()}**");
+                                if (item.TryGetProperty("description", out var epDesc))
+                                    sb.AppendLine(epDesc.GetString());
+                                sb.AppendLine();
+                            }
+                        }
+                        sb.AppendLine();
+                        break;
+                }
+            }
+
+            return sb.ToString().Trim();
+        }
+        catch
+        {
+            return json; // Conversion failed — return original and let the renderer handle it
+        }
+    }
+
+    private static string CamelCaseToTitle(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        var spaced = Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+        return char.ToUpper(spaced[0]) + spaced[1..];
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────

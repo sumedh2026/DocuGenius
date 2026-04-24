@@ -314,13 +314,17 @@ public class GroqService : IGroqService
             try
             {
                 var result = JsonSerializer.Deserialize<AnalysisResult>(candidate, _jsonOptions);
-                if (result != null && HasMeaningfulContent(result))
+                if (result != null)
                 {
-                    result.DocumentationType = docType;
-                    result.SourceInfo        = sourceInfo;
-                    result.GeneratedAt       = DateTime.UtcNow;
-                    _logger.LogDebug("Groq response parsed successfully using candidate {Index}", index);
-                    return result;
+                    NormalizeResult(result, docType);
+                    if (HasMeaningfulContent(result))
+                    {
+                        result.DocumentationType = docType;
+                        result.SourceInfo        = sourceInfo;
+                        result.GeneratedAt       = DateTime.UtcNow;
+                        _logger.LogDebug("Groq response parsed successfully using candidate {Index}", index);
+                        return result;
+                    }
                 }
 
                 _logger.LogWarning(
@@ -343,20 +347,25 @@ public class GroqService : IGroqService
             }
         }
 
-        // Hard fallback — log the raw response so it's visible in the API logs
+        // Log raw response so it's visible in the API logs
         _logger.LogError(
             "All {Count} Groq response candidates failed to parse. " +
             "Raw content (first 500 chars): {Raw}",
             candidates.Count,
             rawContent.Length > 500 ? rawContent[..500] + "…" : rawContent);
 
-        return new AnalysisResult
+        // Last-ditch: extract whatever fields we can via regex, normalise, and return a partial result
+        var partial = TryExtractPartialResult(rawContent, docType, sourceInfo);
+        if (partial != null)
         {
-            ExecutiveSummary  = rawContent,
-            DocumentationType = docType,
-            SourceInfo        = sourceInfo,
-            GeneratedAt       = DateTime.UtcNow
-        };
+            _logger.LogWarning("Returning partial result extracted via regex fallback.");
+            return partial;
+        }
+
+        throw new InvalidOperationException(
+            "The AI response could not be parsed into a valid document. " +
+            "Please try again. " +
+            $"(Preview: {(rawContent.Length > 200 ? rawContent[..200] + "…" : rawContent)})");
     }
 
     // =========================================================================
@@ -687,11 +696,289 @@ public class GroqService : IGroqService
         return null;
     }
 
-    private static bool HasMeaningfulContent(AnalysisResult r) =>
-        !string.IsNullOrWhiteSpace(r.ExecutiveSummary)   ||
-        !string.IsNullOrWhiteSpace(r.TechnicalOverview)  ||
-        !string.IsNullOrWhiteSpace(r.UserGuide)          ||
-        r.Features.Count > 0;
+    private static bool HasMeaningfulContent(AnalysisResult r)
+    {
+        // Reject candidates where a text field contains raw JSON structure —
+        // this means the model wrapped its entire response inside one field.
+        static bool LooksLikeJson(string? s) =>
+            !string.IsNullOrWhiteSpace(s) &&
+            (s.TrimStart().StartsWith('{') ||
+             s.Contains("\"executiveSummary\":", StringComparison.Ordinal) ||
+             s.Contains("\"technicalOverview\":", StringComparison.Ordinal));
+
+        if (LooksLikeJson(r.ExecutiveSummary) ||
+            LooksLikeJson(r.TechnicalOverview) ||
+            LooksLikeJson(r.UserGuide))
+            return false;
+
+        return !string.IsNullOrWhiteSpace(r.ExecutiveSummary)  ||
+               !string.IsNullOrWhiteSpace(r.TechnicalOverview) ||
+               !string.IsNullOrWhiteSpace(r.UserGuide)         ||
+               r.Features.Count > 0;
+    }
+
+    // =========================================================================
+    // Post-parse normalisation
+    // =========================================================================
+
+    /// <summary>
+    /// Normalises a freshly-deserialised <see cref="AnalysisResult"/> in two passes:
+    /// 1. <c>RedistributeSections</c> — if the model dumped multiple ## sections into
+    ///    one field (e.g. everything in executiveSummary), reroutes each section to the
+    ///    correct target field based on heading keywords.
+    /// 2. <c>CleanPlaceholderArrays</c> — removes schema-example placeholders that the
+    ///    model copied verbatim (e.g. features named "Feature name").
+    /// </summary>
+    private static void NormalizeResult(AnalysisResult r, DocumentationType docType)
+    {
+        RedistributeSections(r);
+        CleanPlaceholderArrays(r);
+    }
+
+    private static void RedistributeSections(AnalysisResult r)
+    {
+        // Process each text field that might contain dumped sections.
+        // Order matters: process executiveSummary first (most likely to be overloaded).
+        RedistributeFromField(r, r.ExecutiveSummary,        v => r.ExecutiveSummary        = v);
+        RedistributeFromField(r, r.TechnicalOverview,       v => r.TechnicalOverview       = v);
+        RedistributeFromField(r, r.UserGuide,               v => r.UserGuide               = v);
+        RedistributeFromField(r, r.ArchitectureDescription, v => r.ArchitectureDescription = v);
+    }
+
+    private static void RedistributeFromField(
+        AnalysisResult r, string? fieldValue, Action<string> setField)
+    {
+        if (string.IsNullOrWhiteSpace(fieldValue)) return;
+
+        // Normalise inline ## headings that share a line: "## A ## B" → "## A\n## B"
+        var normalized = Regex.Replace(fieldValue, @"(?<!\n)(##\s+)", "\n$1");
+        var blocks = SplitIntoSectionBlocks(normalized);
+
+        // Nothing to redistribute if there is only one logical block
+        if (blocks.Count <= 1) return;
+
+        var keepBlocks = new List<(string Heading, string Body)>();
+
+        foreach (var (heading, body) in blocks)
+        {
+            var target = ClassifySectionHeading(heading);
+            switch (target)
+            {
+                case "TechnicalOverview":
+                    r.TechnicalOverview = AppendSection(r.TechnicalOverview, heading, body);
+                    break;
+                case "ArchitectureDescription":
+                    r.ArchitectureDescription = AppendSection(r.ArchitectureDescription, heading, body);
+                    break;
+                case "UserGuide":
+                    r.UserGuide = AppendSection(r.UserGuide, heading, body);
+                    break;
+                case "SetupInstructions":
+                    r.SetupInstructions = AppendSection(r.SetupInstructions, heading, body);
+                    break;
+                case "ConfigurationGuide":
+                    r.ConfigurationGuide = AppendSection(r.ConfigurationGuide, heading, body);
+                    break;
+                default:
+                    keepBlocks.Add((heading, body));
+                    break;
+            }
+        }
+
+        // Rebuild the source field with only the sections that still belong there
+        if (keepBlocks.Count < blocks.Count)
+        {
+            var sb = new StringBuilder();
+            foreach (var (heading, body) in keepBlocks)
+            {
+                if (!string.IsNullOrWhiteSpace(heading))
+                    sb.AppendLine($"## {heading}");
+                if (!string.IsNullOrWhiteSpace(body))
+                {
+                    sb.AppendLine(body.Trim());
+                    sb.AppendLine();
+                }
+            }
+            setField(sb.ToString().Trim());
+        }
+    }
+
+    /// <summary>
+    /// Maps a section heading to the <see cref="AnalysisResult"/> field it belongs in.
+    /// Returns "Keep" when the section should remain in the source field.
+    /// </summary>
+    private static string ClassifySectionHeading(string heading)
+    {
+        var h = heading.ToLowerInvariant();
+
+        if (h.Contains("tech") || h.Contains("stack") || h.Contains("framework") ||
+            h.Contains("language") || h.Contains("runtime") || h.Contains("library") ||
+            h.Contains("technical overview") || h.Contains("dependencies") ||
+            h.Contains("package") || h == "overview" && h.Length < 10)
+            return "TechnicalOverview";
+
+        if (h.Contains("architect") || h.Contains("component") || h.Contains("data flow") ||
+            h.Contains("security") || h.Contains("integration") || h.Contains("pattern") ||
+            h.Contains("system design") || h.Contains("infrastructure"))
+            return "ArchitectureDescription";
+
+        if (h.Contains("user guide") || h.Contains("getting started") || h.Contains("how to") ||
+            h.Contains("usage") || h.Contains("workflow") || h.Contains("tutorial") ||
+            h.Contains("walkthrough") || h.Contains("key features"))
+            return "UserGuide";
+
+        if (h.Contains("setup") || h.Contains("install") || h.Contains("prerequisite") ||
+            h.Contains("running") || h.Contains("deployment") || h.Contains("quick start") ||
+            h.Contains("run ") || h == "run")
+            return "SetupInstructions";
+
+        if (h.Contains("config") || h.Contains("setting") || h.Contains("environment") ||
+            h.Contains("appsettings") || h.Contains("env var"))
+            return "ConfigurationGuide";
+
+        // Keep: "purpose", "summary", "introduction", "about", "executive summary", short headings, etc.
+        return "Keep";
+    }
+
+    private static string AppendSection(string? existing, string heading, string body)
+    {
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(existing))
+        {
+            sb.Append(existing.Trim());
+            sb.AppendLine();
+            sb.AppendLine();
+        }
+        if (!string.IsNullOrWhiteSpace(heading))
+            sb.AppendLine($"## {heading}");
+        if (!string.IsNullOrWhiteSpace(body))
+            sb.Append(body.Trim());
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Splits <paramref name="text"/> into (Heading, Body) blocks at <c>## </c> markers.
+    /// A potential heading is only treated as a heading if its word-count is ≤ 5 — longer
+    /// strings after <c>##</c> are body text for the current section (handles the case where
+    /// the model writes inline headings like <c>## Purpose ## UCITMS is a web application…</c>
+    /// which the normaliser converts to <c>## Purpose\n## UCITMS is a web application…</c>).
+    /// </summary>
+    private static List<(string Heading, string Body)> SplitIntoSectionBlocks(string text)
+    {
+        var result  = new List<(string, string)>();
+        var lines   = text.Replace("\r\n", "\n").Split('\n');
+        var heading = string.Empty;
+        var body    = new StringBuilder();
+
+        void Flush()
+        {
+            result.Add((heading, body.ToString().Trim()));
+            heading = string.Empty;
+            body.Clear();
+        }
+
+        foreach (var line in lines)
+        {
+            var m = Regex.Match(line, @"^##\s+(.+)");
+            if (m.Success)
+            {
+                var potentialHeading = m.Groups[1].Value.Trim();
+                var wordCount = potentialHeading
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+                if (wordCount <= 5)
+                {
+                    // Genuine heading — start a new block
+                    Flush();
+                    heading = potentialHeading;
+                }
+                else
+                {
+                    // Long sentence masquerading as a heading — treat as body text
+                    if (body.Length > 0) body.AppendLine();
+                    body.Append(potentialHeading);
+                }
+            }
+            else
+            {
+                if (body.Length > 0) body.AppendLine();
+                body.Append(line);
+            }
+        }
+
+        Flush();
+        return result;
+    }
+
+    private static void CleanPlaceholderArrays(AnalysisResult r)
+    {
+        r.Features = r.Features
+            .Where(f => !string.IsNullOrWhiteSpace(f.Name) &&
+                        !f.Name.Equals("Feature name", StringComparison.OrdinalIgnoreCase) &&
+                        !f.Name.StartsWith("Feature ", StringComparison.OrdinalIgnoreCase) &&
+                        !f.Name.Equals("", StringComparison.Ordinal))
+            .ToList();
+
+        static List<string> Clean(List<string> items) =>
+            items.Where(s => !string.IsNullOrWhiteSpace(s) && s != "\"\"").ToList();
+
+        r.Dependencies    = Clean(r.Dependencies);
+        r.Recommendations = Clean(r.Recommendations);
+        r.KnownIssues     = Clean(r.KnownIssues);
+    }
+
+    /// <summary>
+    /// Last-ditch fallback: extracts whatever string fields it can from a malformed JSON
+    /// response using regex, then calls <see cref="NormalizeResult"/> on the partial result.
+    /// Returns null only if no meaningful field could be extracted at all.
+    /// </summary>
+    private static AnalysisResult? TryExtractPartialResult(
+        string raw, DocumentationType docType, string sourceInfo)
+    {
+        // Matches "fieldName": "value with possible \"escaped\" quotes and \\backslashes"
+        static string? Extract(string json, string field)
+        {
+            var m = Regex.Match(json,
+                $"\"{Regex.Escape(field)}\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"",
+                RegexOptions.Singleline);
+            if (!m.Success) return null;
+            // Unescape the extracted value
+            return m.Groups[1].Value
+                .Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t")
+                .Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+
+        var summary     = Extract(raw, "executiveSummary");
+        var techOver    = Extract(raw, "technicalOverview");
+        var archDesc    = Extract(raw, "architectureDescription");
+        var userGuide   = Extract(raw, "userGuide");
+        var setupInstr  = Extract(raw, "setupInstructions");
+        var configGuide = Extract(raw, "configurationGuide");
+
+        if (string.IsNullOrWhiteSpace(summary) &&
+            string.IsNullOrWhiteSpace(techOver) &&
+            string.IsNullOrWhiteSpace(userGuide))
+            return null;
+
+        const string Notice =
+            "\n\n*(Note: the document was partially generated — some sections may be incomplete.)*";
+
+        var result = new AnalysisResult
+        {
+            ExecutiveSummary        = string.IsNullOrWhiteSpace(summary) ? string.Empty : summary + Notice,
+            TechnicalOverview       = techOver    ?? string.Empty,
+            ArchitectureDescription = archDesc    ?? string.Empty,
+            UserGuide               = userGuide   ?? string.Empty,
+            SetupInstructions       = setupInstr  ?? string.Empty,
+            ConfigurationGuide      = configGuide ?? string.Empty,
+            DocumentationType       = docType,
+            SourceInfo              = sourceInfo,
+            GeneratedAt             = DateTime.UtcNow
+        };
+
+        NormalizeResult(result, docType);
+        return result;
+    }
 
     private static string BuildJiraContext(List<JiraTicket> tickets)
     {
