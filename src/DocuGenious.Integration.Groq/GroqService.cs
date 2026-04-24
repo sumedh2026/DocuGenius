@@ -142,7 +142,7 @@ public class GroqService : IGroqService
     }
 
 
-    // Retry delays for transient Groq server errors (5xx). 429/401 are not retried.
+    // Retry delays for transient Groq server errors (5xx). 429 has its own back-off logic.
     private static readonly int[] RetryDelaysMs = [1500, 4000, 9000];
 
     private async Task<AnalysisResult> CallOpenAiAsync(
@@ -160,6 +160,11 @@ public class GroqService : IGroqService
             // 0.4 gives deterministic output while allowing natural language variation
             Temperature = 0.4f
         };
+
+        // Allow one automatic back-off when the free-tier token bucket is full.
+        // Groq's 429 body tells us exactly how long to wait ("try again in 38.4s"),
+        // so if the wait is ≤ 65 s we pause and retry transparently.
+        int rateLimitRetries = 0;
 
         for (int attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
         {
@@ -200,9 +205,35 @@ public class GroqService : IGroqService
             }
             catch (ClientResultException ex) when (ex.Status == 429)
             {
-                // Rate limit exhausted — no point retrying immediately
+                // ── Free-tier token-bucket exhaustion (6,000 TPM limit) ─────────
+                // Groq includes the exact wait in the error: "Please try again in 38.4s."
+                var waitSec = ParseRetryAfterSeconds(ex.Message);
+
+                if (rateLimitRetries == 0 && waitSec is > 0 and <= 65)
+                {
+                    // Auto-wait for the bucket to refill, then retry transparently.
+                    rateLimitRetries++;
+                    var waitMs = (int)(waitSec.Value * 1000) + 1500; // +1.5 s buffer
+                    _logger.LogWarning(
+                        "Groq 429 — free-tier token bucket full. " +
+                        "Auto-waiting {Sec:F1} s for it to refill before retrying…", waitSec.Value);
+                    await Task.Delay(waitMs);
+                    attempt--;  // don't consume a 5xx retry slot; loop increment restores it
+                    continue;
+                }
+
+                // Already auto-retried once, or the wait is too long — surface clearly.
+                var hint = waitSec.HasValue
+                    ? $"Please wait about {(int)Math.Ceiling(waitSec.Value)} seconds and try again."
+                    : "Please wait about a minute and try again.";
+
                 throw new InvalidOperationException(
-                    "Groq rate limit reached. Wait a moment and try again, or check your plan at https://console.groq.com", ex);
+                    $"Groq free-tier rate limit exceeded. " +
+                    $"The llama-3.1-8b-instant model allows 6,000 tokens per minute on the free plan, " +
+                    $"and this request used approximately {_settings.MaxTokens + 500} tokens. " +
+                    $"{hint} " +
+                    $"You can also reduce Groq:MaxTokens in appsettings.json, " +
+                    $"or upgrade your plan at https://console.groq.com", ex);
             }
             catch (ClientResultException ex) when (ex.Status == 401)
             {
@@ -388,6 +419,37 @@ public class GroqService : IGroqService
                 "Output quality score {Score}/100 — {Count} issue(s): {Issues}",
                 score, issues.Count, string.Join(" | ", issues));
         }
+    }
+
+    /// <summary>
+    /// Parses the retry-after delay (seconds) from a Groq 429 error message.
+    /// Groq embeds the wait time in the message body, e.g.:
+    ///   "Please try again in 38.4s."
+    ///   "Please try again in 1m2.5s."
+    /// Returns null when no recognisable pattern is found.
+    /// </summary>
+    private static double? ParseRetryAfterSeconds(string message)
+    {
+        // "Xm Y.Ys" — minutes + fractional seconds
+        var mMatch = Regex.Match(message,
+            @"try again in (\d+)m(\d+(?:\.\d+)?)s", RegexOptions.IgnoreCase);
+        if (mMatch.Success &&
+            double.TryParse(mMatch.Groups[1].Value, out var mins) &&
+            double.TryParse(mMatch.Groups[2].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var secs))
+            return mins * 60 + secs;
+
+        // "X.Xs" — fractional seconds only
+        var sMatch = Regex.Match(message,
+            @"try again in (\d+(?:\.\d+)?)s", RegexOptions.IgnoreCase);
+        if (sMatch.Success &&
+            double.TryParse(sMatch.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var sec))
+            return sec;
+
+        return null;
     }
 
     /// <summary>
