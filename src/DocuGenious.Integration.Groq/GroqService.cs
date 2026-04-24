@@ -297,6 +297,7 @@ public class GroqService : IGroqService
     // unexpected shape (strings, wrong property names, single object instead of array).
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
+        AllowTrailingCommas = true,
         Converters =
         {
             new System.Text.Json.Serialization.JsonStringEnumConverter(),
@@ -591,7 +592,11 @@ public class GroqService : IGroqService
 
             if (inStr)
             {
-                // Escape ALL control characters that are illegal raw in JSON strings
+                // Escape ALL characters that are illegal raw inside a JSON string:
+                //   • U+0000–U+001F  standard C0 control characters
+                //   • U+007F         DEL
+                //   • U+2028         Unicode Line Separator  (System.Text.Json rejects unescaped)
+                //   • U+2029         Unicode Paragraph Separator (same)
                 switch (ch)
                 {
                     case '\n': sb.Append("\\n");  break;
@@ -599,6 +604,8 @@ public class GroqService : IGroqService
                     case '\t': sb.Append("\\t");  break;
                     case '\b': sb.Append("\\b");  break;
                     case '\f': sb.Append("\\f");  break;
+                    case '\x2028': sb.Append("\\u2028"); break;  // Line Separator
+                    case '\x2029': sb.Append("\\u2029"); break;  // Paragraph Separator
                     default:
                         if (ch < '\x20' || ch == '\x7F')
                             sb.Append($"\\u{(int)ch:x4}");
