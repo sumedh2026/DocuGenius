@@ -547,9 +547,12 @@ public class GroqService : IGroqService
 
         // 6. Nested-object flattening — model sometimes returns
         //    {"executiveSummary":{"description":"…"}} instead of {"executiveSummary":"…"}.
-        //    Flatten those object-valued string fields to plain strings and retry.
-        var flattened = FlattenStringFields(trimmed);
-        if (flattened != null)
+        //    Run FixLiteralNewlinesInStrings first so JsonDocument.Parse succeeds even when
+        //    the raw content has literal control characters inside string values — without this
+        //    FlattenStringFields silently returns null and no flattened candidate is generated.
+        var preRepaired = FixLiteralNewlinesInStrings(trimmed);
+        var flattened   = FlattenStringFields(preRepaired);
+        if (flattened != null && flattened != preRepaired)
             foreach (var c in WithRepaired(flattened)) yield return c;
     }
 
