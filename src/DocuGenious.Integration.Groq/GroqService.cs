@@ -372,30 +372,20 @@ public class GroqService : IGroqService
             }
         }
 
-        // All structured parse strategies failed.
+        // Hard fallback — log the raw response so it's visible in the API logs
         _logger.LogError(
             "All {Count} Groq response candidates failed to parse. " +
             "Raw content (first 500 chars): {Raw}",
             candidates.Count,
             rawContent.Length > 500 ? rawContent[..500] + "…" : rawContent);
 
-        // Last resort: pull individual string fields out of the malformed JSON with
-        // regex so we can still build a partial (but readable) document rather than
-        // dumping raw JSON text into the PDF.
-        var partial = TryExtractPartialResult(rawContent, docType, sourceInfo);
-        if (partial != null)
+        return new AnalysisResult
         {
-            _logger.LogWarning("Returning partial result extracted via regex fallback.");
-            return partial;
-        }
-
-        // Truly unrecoverable — surface a clear error so the user sees a dialog
-        // message instead of a JSON-filled PDF.
-        throw new InvalidOperationException(
-            "The AI response could not be converted into a readable document. " +
-            "This usually happens when the response is cut off before it is complete. " +
-            "Try a more focused document type (e.g. User Guide or Architecture Overview " +
-            "instead of Full Documentation), or use fewer JIRA tickets.");
+            ExecutiveSummary  = rawContent,
+            DocumentationType = docType,
+            SourceInfo        = sourceInfo,
+            GeneratedAt       = DateTime.UtcNow
+        };
     }
 
     // =========================================================================
@@ -864,65 +854,6 @@ public class GroqService : IGroqService
     }
 
     /// <summary>
-    /// Last-resort fallback: uses regex to extract the values of known string fields
-    /// from a JSON response that could not be deserialised by any other strategy.
-    /// Returns a partial <see cref="AnalysisResult"/> if at least one meaningful field
-    /// is found, or null if nothing readable can be salvaged.
-    /// The extracted text is plain prose (JSON escape sequences are decoded), so it
-    /// renders correctly in the PDF without any raw JSON artefacts.
-    /// </summary>
-    private static AnalysisResult? TryExtractPartialResult(
-        string raw, DocumentationType docType, string sourceInfo)
-    {
-        static string? Extract(string json, string field)
-        {
-            // Matches "fieldName": "value" where value may contain \" and \\ escapes.
-            // The value is captured up to the first unescaped closing quote.
-            var m = Regex.Match(json,
-                $"\"{Regex.Escape(field)}\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"",
-                RegexOptions.Singleline);
-            if (!m.Success) return null;
-
-            // Decode common JSON escape sequences so the text is human-readable.
-            return m.Groups[1].Value
-                .Replace("\\n",  "\n")
-                .Replace("\\r",  "")
-                .Replace("\\t",  "\t")
-                .Replace("\\\"", "\"")
-                .Replace("\\\\", "\\");
-        }
-
-        var summary      = Extract(raw, "executiveSummary");
-        var techOverview = Extract(raw, "technicalOverview");
-        var archDesc     = Extract(raw, "architectureDescription");
-        var userGuide    = Extract(raw, "userGuide");
-        var setup        = Extract(raw, "setupInstructions");
-
-        // Only return a partial result if we salvaged something meaningful.
-        if (string.IsNullOrWhiteSpace(summary) &&
-            string.IsNullOrWhiteSpace(techOverview) &&
-            string.IsNullOrWhiteSpace(userGuide))
-            return null;
-
-        const string Notice = "\n\n[Note: This document was partially generated. " +
-                              "For a complete document try a more focused type " +
-                              "(e.g. User Guide or Architecture Overview) " +
-                              "or reduce the number of JIRA tickets.]";
-
-        return new AnalysisResult
-        {
-            ExecutiveSummary      = (summary      ?? string.Empty) + (summary      != null ? Notice : string.Empty),
-            TechnicalOverview     = techOverview  ?? string.Empty,
-            ArchitectureDescription = archDesc    ?? string.Empty,
-            UserGuide             = userGuide     ?? string.Empty,
-            SetupInstructions     = setup         ?? string.Empty,
-            DocumentationType     = docType,
-            SourceInfo            = sourceInfo,
-            GeneratedAt           = DateTime.UtcNow
-        };
-    }
-
-    /// <summary>
     /// Walks <paramref name="raw"/> and returns the substring from the first top-level
     /// '{' to its matching '}', ignoring braces that appear inside quoted strings.
     /// Uses proper escape-state tracking (handles \\" correctly).
@@ -966,25 +897,11 @@ public class GroqService : IGroqService
         return null;
     }
 
-    private static bool HasMeaningfulContent(AnalysisResult r)
-    {
-        // Reject any candidate where the primary text fields look like raw JSON.
-        // This guards against a "successful" deserialisation that put JSON structure
-        // into a string field (e.g. ExecutiveSummary = "{\"technicalOverview\":...}").
-        static bool LooksLikeJson(string? s) =>
-            !string.IsNullOrWhiteSpace(s) &&
-            (s.TrimStart().StartsWith('{') || s.Contains("\"executiveSummary\":", StringComparison.Ordinal));
-
-        if (LooksLikeJson(r.ExecutiveSummary) ||
-            LooksLikeJson(r.TechnicalOverview) ||
-            LooksLikeJson(r.UserGuide))
-            return false;
-
-        return !string.IsNullOrWhiteSpace(r.ExecutiveSummary)  ||
-               !string.IsNullOrWhiteSpace(r.TechnicalOverview) ||
-               !string.IsNullOrWhiteSpace(r.UserGuide)         ||
-               r.Features.Count > 0;
-    }
+    private static bool HasMeaningfulContent(AnalysisResult r) =>
+        !string.IsNullOrWhiteSpace(r.ExecutiveSummary)   ||
+        !string.IsNullOrWhiteSpace(r.TechnicalOverview)  ||
+        !string.IsNullOrWhiteSpace(r.UserGuide)          ||
+        r.Features.Count > 0;
 
     private static string BuildJiraContext(List<JiraTicket> tickets)
     {
