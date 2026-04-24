@@ -191,12 +191,16 @@ public class GroqService : IGroqService
                 // ── Streaming call ──────────────────────────────────────────────
                 // Tokens stream back as they are generated, so no single "wait for
                 // the whole response" hang. Each received chunk resets the read timer.
+                // compound-beta (agentic) sends non-text chunks (tool calls, search
+                // results, reasoning traces) where ContentUpdate is null — skip those.
                 var sb = new StringBuilder();
                 await foreach (var update in
                     _chatClient.CompleteChatStreamingAsync(messages, options, cts.Token))
                 {
+                    if (update.ContentUpdate is null) continue;
                     foreach (var part in update.ContentUpdate)
-                        sb.Append(part.Text);
+                        if (part?.Text is not null)
+                            sb.Append(part.Text);
                 }
 
                 var content = sb.ToString();
@@ -288,8 +292,10 @@ public class GroqService : IGroqService
         await foreach (var update in
             _chatClient.CompleteChatStreamingAsync(messages, options, finalCts.Token))
         {
+            if (update.ContentUpdate is null) continue;
             foreach (var part in update.ContentUpdate)
-                finalSb.Append(part.Text);
+                if (part?.Text is not null)
+                    finalSb.Append(part.Text);
         }
         var finalContent = finalSb.ToString();
         var finalResult  = ParseAnalysisResult(finalContent, docType, sourceInfo);
