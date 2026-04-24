@@ -191,16 +191,26 @@ public class GroqService : IGroqService
                 // ── Streaming call ──────────────────────────────────────────────
                 // Tokens stream back as they are generated, so no single "wait for
                 // the whole response" hang. Each received chunk resets the read timer.
-                // compound-beta (agentic) sends non-text chunks (tool calls, search
-                // results, reasoning traces) where ContentUpdate is null — skip those.
+                // compound-beta (agentic) sends non-text chunks (tool calls, web search,
+                // reasoning traces) whose ContentUpdate property getter itself throws
+                // NullReferenceException inside the SDK — wrap each access in try/catch.
                 var sb = new StringBuilder();
                 await foreach (var update in
                     _chatClient.CompleteChatStreamingAsync(messages, options, cts.Token))
                 {
-                    if (update.ContentUpdate is null) continue;
-                    foreach (var part in update.ContentUpdate)
-                        if (part?.Text is not null)
-                            sb.Append(part.Text);
+                    try
+                    {
+                        var parts = update.ContentUpdate;
+                        if (parts is null) continue;
+                        foreach (var part in parts)
+                            if (part?.Text is not null)
+                                sb.Append(part.Text);
+                    }
+                    catch (NullReferenceException)
+                    {
+                        // Agentic chunk with no text content (tool call, search result,
+                        // reasoning step) — the SDK throws internally, just skip it.
+                    }
                 }
 
                 var content = sb.ToString();
@@ -292,10 +302,15 @@ public class GroqService : IGroqService
         await foreach (var update in
             _chatClient.CompleteChatStreamingAsync(messages, options, finalCts.Token))
         {
-            if (update.ContentUpdate is null) continue;
-            foreach (var part in update.ContentUpdate)
-                if (part?.Text is not null)
-                    finalSb.Append(part.Text);
+            try
+            {
+                var parts = update.ContentUpdate;
+                if (parts is null) continue;
+                foreach (var part in parts)
+                    if (part?.Text is not null)
+                        finalSb.Append(part.Text);
+            }
+            catch (NullReferenceException) { /* agentic non-text chunk — skip */ }
         }
         var finalContent = finalSb.ToString();
         var finalResult  = ParseAnalysisResult(finalContent, docType, sourceInfo);
