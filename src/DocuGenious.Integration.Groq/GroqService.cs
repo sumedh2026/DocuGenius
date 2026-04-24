@@ -178,43 +178,31 @@ public class GroqService : IGroqService
 
         for (int attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
         {
-            // Absolute ceiling per attempt. With streaming the network timer resets on
-            // every received chunk, so this only fires if Groq stops sending entirely.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
 
             try
             {
                 _logger.LogInformation(
-                    "Calling Groq streaming (attempt {Attempt}/{Max}, docType={DocType}, maxTokens={Tokens})...",
+                    "Calling Groq (attempt {Attempt}/{Max}, docType={DocType}, maxTokens={Tokens})...",
                     attempt + 1, RetryDelaysMs.Length + 1, docType, _settings.MaxTokens);
 
-                // ── Streaming call ──────────────────────────────────────────────
-                // Tokens stream back as they are generated, so no single "wait for
-                // the whole response" hang. Each received chunk resets the read timer.
-                // compound-beta (agentic) sends non-text chunks (tool calls, web search,
-                // reasoning traces) whose ContentUpdate property getter itself throws
-                // NullReferenceException inside the SDK — wrap each access in try/catch.
+                // ── Non-streaming call ──────────────────────────────────────────
+                // compound-beta is an agentic model that performs tool calls and web
+                // searches internally before returning. Its streaming chunks cause
+                // NullReferenceException inside the OpenAI SDK for all non-text updates,
+                // which made the accumulated content empty. The non-streaming call waits
+                // for the fully-assembled response in one round trip — simpler and more
+                // reliable for agentic models. For standard models the difference is
+                // negligible since we always wait for the full response anyway.
+                var response = await _chatClient.CompleteChatAsync(messages, options, cts.Token);
+
                 var sb = new StringBuilder();
-                await foreach (var update in
-                    _chatClient.CompleteChatStreamingAsync(messages, options, cts.Token))
-                {
-                    try
-                    {
-                        var parts = update.ContentUpdate;
-                        if (parts is null) continue;
-                        foreach (var part in parts)
-                            if (part?.Text is not null)
-                                sb.Append(part.Text);
-                    }
-                    catch (NullReferenceException)
-                    {
-                        // Agentic chunk with no text content (tool call, search result,
-                        // reasoning step) — the SDK throws internally, just skip it.
-                    }
-                }
+                foreach (var part in response.Value.Content)
+                    if (part.Kind == ChatMessageContentPartKind.Text && part.Text is not null)
+                        sb.Append(part.Text);
 
                 var content = sb.ToString();
-                _logger.LogInformation("Groq stream complete — {Chars} chars", content.Length);
+                _logger.LogInformation("Groq call complete — {Chars} chars", content.Length);
 
                 var result = ParseAnalysisResult(content, docType, sourceInfo);
                 ValidateOutputQuality(result, docType);
@@ -222,31 +210,27 @@ public class GroqService : IGroqService
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
-                // Absolute ceiling reached — no point retrying a hung model
                 throw new InvalidOperationException(
-                    $"Groq stopped sending data after {_settings.TimeoutSeconds} seconds. " +
-                    "Try increasing Groq:TimeoutSeconds or reducing Groq:MaxTokens in appsettings.json.");
+                    $"Groq did not respond within {_settings.TimeoutSeconds} seconds. " +
+                    "Try increasing Groq:TimeoutSeconds in appsettings.json.");
             }
             catch (ClientResultException ex) when (ex.Status == 429)
             {
-                // ── Free-tier token-bucket exhaustion (6,000 TPM limit) ─────────
-                // Groq includes the exact wait in the error: "Please try again in 38.4s."
+                // ── Free-tier token-bucket exhaustion ─────────────────────────
                 var waitSec = ParseRetryAfterSeconds(ex.Message);
 
                 if (rateLimitRetries == 0 && waitSec is > 0 and <= 65)
                 {
-                    // Auto-wait for the bucket to refill, then retry transparently.
                     rateLimitRetries++;
-                    var waitMs = (int)(waitSec.Value * 1000) + 1500; // +1.5 s buffer
+                    var waitMs = (int)(waitSec.Value * 1000) + 1500;
                     _logger.LogWarning(
-                        "Groq 429 — free-tier token bucket full. " +
-                        "Auto-waiting {Sec:F1} s for it to refill before retrying…", waitSec.Value);
+                        "Groq 429 — token bucket full. Auto-waiting {Sec:F1} s before retrying…",
+                        waitSec.Value);
                     await Task.Delay(waitMs);
-                    attempt--;  // don't consume a 5xx retry slot; loop increment restores it
+                    attempt--;
                     continue;
                 }
 
-                // Already auto-retried once, or the wait is too long — surface clearly.
                 var hint = waitSec.HasValue
                     ? $"Please wait about {(int)Math.Ceiling(waitSec.Value)} seconds and try again."
                     : "Please wait about a minute and try again.";
@@ -261,26 +245,20 @@ public class GroqService : IGroqService
             }
             catch (ClientResultException ex) when (ex.Status == 413)
             {
-                // HTTP 413 means the total request size (input + output) exceeded the model's
-                // per-request limit even after our budget calculation.  This can happen when
-                // the system prompt or schema adds more tokens than our rough estimate.
                 throw new InvalidOperationException(
                     $"The request exceeded the Groq token limit for model '{_settings.Model}' " +
                     $"({_settings.TpmLimit:N0} TPM). " +
                     $"Estimated size was {estimatedInputTokens + _settings.MaxTokens} tokens. " +
-                    $"Try selecting fewer JIRA tickets, using a more focused document type " +
-                    $"(e.g. User Guide instead of Full Documentation), or upgrading your plan at " +
-                    $"https://console.groq.com/settings/billing.", ex);
+                    $"Try selecting fewer JIRA tickets, a more focused document type, " +
+                    $"or upgrading your plan at https://console.groq.com/settings/billing.", ex);
             }
             catch (ClientResultException ex) when (ex.Status == 401)
             {
-                // Bad key — no point retrying
                 throw new InvalidOperationException(
                     "Groq API key is invalid. Verify your key at https://console.groq.com/keys", ex);
             }
             catch (ClientResultException ex) when (ex.Status >= 500 && attempt < RetryDelaysMs.Length)
             {
-                // Transient server error — retry after delay
                 _logger.LogWarning(
                     "Groq server error {Status} on attempt {Attempt}. Retrying in {Delay}ms…",
                     ex.Status, attempt + 1, RetryDelaysMs[attempt]);
@@ -288,9 +266,8 @@ public class GroqService : IGroqService
             }
             catch (Exception ex) when (ex is not InvalidOperationException && attempt < RetryDelaysMs.Length)
             {
-                // Network blip — retry
                 _logger.LogWarning(ex,
-                    "Groq stream failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
+                    "Groq call failed on attempt {Attempt} ({Type}). Retrying in {Delay}ms…",
                     attempt + 1, ex.GetType().Name, RetryDelaysMs[attempt]);
                 await Task.Delay(RetryDelaysMs[attempt]);
             }
@@ -298,20 +275,11 @@ public class GroqService : IGroqService
 
         // Final attempt — let any exception propagate naturally
         using var finalCts = new CancellationTokenSource(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+        var finalResponse = await _chatClient.CompleteChatAsync(messages, options, finalCts.Token);
         var finalSb = new StringBuilder();
-        await foreach (var update in
-            _chatClient.CompleteChatStreamingAsync(messages, options, finalCts.Token))
-        {
-            try
-            {
-                var parts = update.ContentUpdate;
-                if (parts is null) continue;
-                foreach (var part in parts)
-                    if (part?.Text is not null)
-                        finalSb.Append(part.Text);
-            }
-            catch (NullReferenceException) { /* agentic non-text chunk — skip */ }
-        }
+        foreach (var part in finalResponse.Value.Content)
+            if (part.Kind == ChatMessageContentPartKind.Text && part.Text is not null)
+                finalSb.Append(part.Text);
         var finalContent = finalSb.ToString();
         var finalResult  = ParseAnalysisResult(finalContent, docType, sourceInfo);
         ValidateOutputQuality(finalResult, docType);
