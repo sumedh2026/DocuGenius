@@ -319,11 +319,18 @@ public class GroqService : IGroqService
     }
 
     // Reuse a single options instance — creating JsonSerializerOptions inline is expensive
-    // and can trigger validation issues in .NET 9/10. JsonStringEnumConverter prevents
-    // enum fields (e.g. DocumentationType) from causing a JsonException.
+    // and can trigger validation issues in .NET 9/10.
+    // FlexibleXxxConverters handle the cases where the model returns a list field in an
+    // unexpected shape (strings, wrong property names, single object instead of array).
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter(),
+            new FlexibleApiEndpointListConverter(),
+            new FlexibleFeatureListConverter(),
+            new FlexibleStringListConverter()
+        }
     };
 
     private AnalysisResult ParseAnalysisResult(string rawContent, DocumentationType docType, string sourceInfo)
