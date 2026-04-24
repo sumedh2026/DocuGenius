@@ -154,11 +154,19 @@ public class GroqService : IGroqService
             new UserChatMessage(TruncateIfNeeded(userPrompt))
         };
 
-        // FullDocumentation covers all sections (overview + guide + setup + architecture +
-        // features) so it needs a larger token budget than focused doc types.
-        var maxTokens = docType == DocumentationType.FullDocumentation
-            ? Math.Max(_settings.MaxTokens, 5000)
-            : _settings.MaxTokens;
+        // Some doc types produce significantly more output than others.
+        // FullDocumentation and TechnicalDocumentation both request many sections
+        // (overview + architecture + setup + features + apiEndpoints + dependencies),
+        // so they need a larger token budget to avoid mid-stream truncation.
+        // ArchitectureOverview has a single very long architectureDescription field
+        // (6 sub-sections) that can overflow the default limit.
+        var maxTokens = docType switch
+        {
+            DocumentationType.FullDocumentation       => Math.Max(_settings.MaxTokens, 5000),
+            DocumentationType.TechnicalDocumentation  => Math.Max(_settings.MaxTokens, 5000),
+            DocumentationType.ArchitectureOverview    => Math.Max(_settings.MaxTokens, 4500),
+            _                                         => _settings.MaxTokens
+        };
 
         var options = new ChatCompletionOptions
         {
@@ -791,7 +799,7 @@ public class GroqService : IGroqService
             "Write TECHNICAL DOCUMENTATION for developers. Use actual class names, methods, and config keys from SOURCE DATA. Include setup commands and configuration details.",
 
         DocumentationType.ApiDocumentation =>
-            "Write API REFERENCE for developers. Document every endpoint with method, path, request and response JSON examples from SOURCE DATA.",
+            "Write API REFERENCE for developers. Document every endpoint with method, path, and plain-text request/response descriptions from SOURCE DATA. Do NOT embed raw JSON inside string values.",
 
         DocumentationType.ArchitectureOverview =>
             "Write an ARCHITECTURE OVERVIEW for senior engineers. Cover components, data flow, external integrations, and technology choices from SOURCE DATA.",
@@ -808,7 +816,7 @@ public class GroqService : IGroqService
             """{"executiveSummary":"what/who/value","userGuide":"## sections with numbered steps","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""],"knownIssues":[""]}""",
 
         DocumentationType.TechnicalDocumentation =>
-            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults/effects","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — effect","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text","responseBody":"Describe response fields in plain text"}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
 
         DocumentationType.ApiDocumentation =>
             """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text, e.g. id (int, required)","responseBody":"Describe response fields in plain text, e.g. returns user object with id and name"}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
@@ -835,9 +843,10 @@ public class GroqService : IGroqService
 
         return $"{role} Rules: " +
                "1) Document ONLY the project in SOURCE DATA — never Docu-Genius or this tool. " +
-               "2) Output ONLY a raw JSON object, first char { last char }, no fences. " +
-               "3) Use ## headings and lists inside string values. " +
-               "4) Use real names and values from SOURCE DATA, not generic placeholders.";
+               "2) Output ONLY a raw JSON object, first char { last char }, no markdown fences. " +
+               "3) Use ## headings and bullet lists inside string values for structure. " +
+               "4) NEVER embed raw JSON inside string values — describe request/response fields in plain English. " +
+               "5) Use real names and values from SOURCE DATA, not generic placeholders.";
     }
 
     private static string Truncate(string text, int maxLength) =>
