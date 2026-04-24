@@ -145,10 +145,9 @@ public class GroqService : IGroqService
     // Retry delays for transient Groq server errors (5xx). 429 has its own back-off logic.
     private static readonly int[] RetryDelaysMs = [1500, 4000, 9000];
 
-    // Groq free tier: 6,000 tokens per minute (input + output combined per request).
-    // Leave a 200-token safety margin so we never hit HTTP 413 "Request too large".
-    private const int TpmBudget     = 5800;
-    private const int MinOutputTokens = 1500; // always leave enough room to generate something useful
+    // Safety margin subtracted from TpmLimit so we never hit HTTP 413.
+    private const int TpmSafetyMargin  = 200;
+    private const int MinOutputTokens  = 1500; // always leave enough room to generate something useful
 
     private async Task<AnalysisResult> CallOpenAiAsync(
         string systemPrompt, string userPrompt, DocumentationType docType, string sourceInfo)
@@ -176,15 +175,17 @@ public class GroqService : IGroqService
         // ── TPM budget enforcement ────────────────────────────────────────────────
         // Rough estimate: 1 token ≈ 4 chars.  The system prompt is counted too because
         // Groq includes it in the total.  If the prompt is large we shrink the output
-        // budget rather than letting the request exceed the 6,000 TPM cap.
+        // budget rather than letting the request exceed the model's TPM cap.
+        var tpmBudget            = _settings.TpmLimit - TpmSafetyMargin;
         var estimatedInputTokens = (systemPrompt.Length + truncatedUserPrompt.Length) / 4;
-        var outputBudget         = Math.Max(MinOutputTokens, TpmBudget - estimatedInputTokens);
+        var outputBudget         = Math.Max(MinOutputTokens, tpmBudget - estimatedInputTokens);
         var effectiveMaxTokens   = Math.Min(desiredMaxTokens, outputBudget);
 
         _logger.LogInformation(
-            "Token budget: ~{Input} input + {Output} output ≈ {Total} / {Limit} TPM cap",
+            "Token budget: ~{Input} input + {Output} output ≈ {Total} / {Limit} TPM cap (model: {Model})",
             estimatedInputTokens, effectiveMaxTokens,
-            estimatedInputTokens + effectiveMaxTokens, TpmBudget + 200);
+            estimatedInputTokens + effectiveMaxTokens,
+            _settings.TpmLimit, _settings.Model);
 
         var options = new ChatCompletionOptions
         {
@@ -273,7 +274,7 @@ public class GroqService : IGroqService
                 // per-request limit even after our budget calculation.  This can happen when
                 // the system prompt or schema adds more tokens than our rough estimate.
                 throw new InvalidOperationException(
-                    $"The request exceeded the Groq free-tier token limit (6,000 tokens total). " +
+                    $"The request exceeded the Groq token limit ({_settings.TpmLimit:N0} TPM for model '{_settings.Model}'). " +
                     $"Estimated size was {estimatedInputTokens + effectiveMaxTokens} tokens. " +
                     $"Try selecting fewer JIRA tickets, using a more focused document type " +
                     $"(e.g. User Guide instead of Full Documentation), or upgrading your plan at " +
@@ -882,10 +883,11 @@ public class GroqService : IGroqService
     private static string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "... [truncated]";
 
-    // Hard-cap the user prompt at 7,000 chars (≈1,750 tokens).
-    // Combined with the system prompt (~80 tokens) this keeps total input under ~1,830 tokens,
-    // which leaves ~3,970 tokens for output within the Groq free-tier 6,000 TPM cap.
-    // The dynamic budget calculation in CallOpenAiAsync fine-tunes the output limit further.
+    // Hard-cap the user prompt at 40,000 chars (≈10,000 tokens).
+    // This is a safety ceiling — the dynamic budget in CallOpenAiAsync further caps
+    // the output token count so input + output never exceeds the configured TpmLimit.
+    // 40K chars is generous enough for rich JIRA + Git combined contexts while keeping
+    // well within the 131K context window of groq/compound (or 128K for other models).
     private static string TruncateIfNeeded(string prompt) =>
-        prompt.Length > 7_000 ? prompt[..7_000] + "\n\n[Source data truncated to fit within the 6,000 token free-tier limit]" : prompt;
+        prompt.Length > 40_000 ? prompt[..40_000] + "\n\n[Source data truncated to fit token limits]" : prompt;
 }
