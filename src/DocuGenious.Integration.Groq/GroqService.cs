@@ -336,6 +336,13 @@ public class GroqService : IGroqService
             try
             {
                 var result = JsonSerializer.Deserialize<AnalysisResult>(candidate, _jsonOptions);
+                if (result != null)
+                {
+                    // Normalize first: redistribute ## sections to correct fields,
+                    // then clean placeholder/empty array entries.
+                    NormalizeResult(result, docType);
+                }
+
                 if (result != null && HasMeaningfulContent(result))
                 {
                     result.DocumentationType = docType;
@@ -675,6 +682,187 @@ public class GroqService : IGroqService
         return sb.ToString();
     }
 
+    // =========================================================================
+    // Result normaliser — redistributes sections and cleans placeholder data
+    // =========================================================================
+
+    /// <summary>
+    /// Post-processes a freshly deserialised <see cref="AnalysisResult"/> so the document
+    /// is correctly organised into sections before it reaches the PDF renderer.
+    ///
+    /// The LLM sometimes stuffs all generated content into <c>executiveSummary</c> using
+    /// <c>## heading</c> blocks, leaving every other field empty.  This method:
+    /// <list type="bullet">
+    ///   <item>Splits executiveSummary (and other overloaded string fields) by <c>##</c> heading</item>
+    ///   <item>Moves each block to the correct field based on keyword matching</item>
+    ///   <item>Keeps only 1-3 introductory sentences in executiveSummary</item>
+    ///   <item>Removes placeholder/empty entries from array fields</item>
+    /// </list>
+    /// </summary>
+    private static void NormalizeResult(AnalysisResult r, DocumentationType docType)
+    {
+        RedistributeSections(r);
+        CleanPlaceholderArrays(r);
+    }
+
+    private static void RedistributeSections(AnalysisResult r)
+    {
+        // Also check technicalOverview — LLM sometimes overloads that field too
+        TryRedistributeField(r, r.ExecutiveSummary,     (v) => r.ExecutiveSummary    = v, isSummary: true);
+        TryRedistributeField(r, r.TechnicalOverview,    (v) => r.TechnicalOverview   = v, isSummary: false);
+        TryRedistributeField(r, r.UserGuide,            (v) => r.UserGuide           = v, isSummary: false);
+    }
+
+    private static void TryRedistributeField(
+        AnalysisResult r, string? fieldValue, Action<string> setField, bool isSummary)
+    {
+        if (string.IsNullOrWhiteSpace(fieldValue)) return;
+
+        // Normalize inline headings: "text ## Heading more" → "text\n## Heading more"
+        var normalized = Regex.Replace(fieldValue, @"(?<!\n)(##\s+)", "\n$1");
+
+        var blocks = SplitIntoSectionBlocks(normalized);
+
+        // Nothing to redistribute if there is only one block (no ## headings at all)
+        if (blocks.Count <= 1) return;
+
+        var remaining = new List<string>();
+
+        foreach (var (heading, body) in blocks)
+        {
+            // First block: no heading → introductory prose, keep in this field
+            if (string.IsNullOrWhiteSpace(heading))
+            {
+                remaining.Add(body.Trim());
+                continue;
+            }
+
+            var h = heading.ToLowerInvariant();
+            var sectionMd = $"## {heading}\n{body.Trim()}";
+
+            if (MatchesKeywords(h, "setup", "install", "prerequisite",
+                                    "deploy", "deployment", "run", "launch",
+                                    "environment setup", "getting started with")
+                && string.IsNullOrWhiteSpace(r.SetupInstructions))
+            {
+                r.SetupInstructions = sectionMd;
+            }
+            else if (MatchesKeywords(h, "user guide", "how to use", "how to",
+                                        "usage", "using the", "step-by-step",
+                                        "workflow", "end-user", "for users")
+                && string.IsNullOrWhiteSpace(r.UserGuide))
+            {
+                r.UserGuide = sectionMd;
+            }
+            else if (MatchesKeywords(h, "architecture", "component", "data flow",
+                                        "system design", "infrastructure",
+                                        "service layer", "module", "diagram")
+                && string.IsNullOrWhiteSpace(r.ArchitectureDescription))
+            {
+                r.ArchitectureDescription = sectionMd;
+            }
+            else if (MatchesKeywords(h, "configuration", "config",
+                                        "setting", "environment variable",
+                                        "appsetting", "app setting", "key")
+                && string.IsNullOrWhiteSpace(r.ConfigurationGuide))
+            {
+                r.ConfigurationGuide = sectionMd;
+            }
+            else if (MatchesKeywords(h, "technical", "tech stack", "stack",
+                                        "technology", "framework", "implementation",
+                                        "database", "backend", "overview", "scope",
+                                        "purpose", "feature", "capability")
+                && string.IsNullOrWhiteSpace(r.TechnicalOverview))
+            {
+                r.TechnicalOverview = sectionMd;
+            }
+            else
+            {
+                // No specific target field matched — keep in this field
+                remaining.Add(sectionMd);
+            }
+        }
+
+        // Rebuild this field with whatever did not get moved out
+        setField(string.Join("\n\n", remaining.Where(s => !string.IsNullOrWhiteSpace(s))));
+    }
+
+    /// <summary>
+    /// Splits a markdown string into (heading, body) pairs at every <c>## </c> boundary.
+    /// The first pair has an empty heading (text before the first heading).
+    /// </summary>
+    private static List<(string Heading, string Body)> SplitIntoSectionBlocks(string text)
+    {
+        var result  = new List<(string, string)>();
+        var lines   = text.Replace("\r\n", "\n").Split('\n');
+        var heading = string.Empty;
+        var body    = new StringBuilder();
+
+        void Flush()
+        {
+            var b = body.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(b) || !string.IsNullOrWhiteSpace(heading))
+                result.Add((heading, b));
+        }
+
+        foreach (var line in lines)
+        {
+            var m = Regex.Match(line, @"^##\s+(.+)");
+            if (m.Success)
+            {
+                Flush();
+                heading = m.Groups[1].Value.Trim();
+                body.Clear();
+            }
+            else
+            {
+                if (body.Length > 0) body.AppendLine();
+                body.Append(line);
+            }
+        }
+
+        Flush();
+        return result;
+    }
+
+    private static bool MatchesKeywords(string text, params string[] keywords) =>
+        keywords.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Removes placeholder, empty, or schema-hint-echo items that the LLM
+    /// sometimes emits when it has no real content to put in an array field.
+    /// </summary>
+    private static void CleanPlaceholderArrays(AnalysisResult r)
+    {
+        static bool IsPlaceholder(string s)
+        {
+            var t = s.Trim();
+            return string.IsNullOrWhiteSpace(t)
+                || t is "string" or "null" or "..." or "example" or "-" or "•"
+                || t.StartsWith("Package vX", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Library vX",  StringComparison.OrdinalIgnoreCase)
+                || t.Equals("N/A",             StringComparison.OrdinalIgnoreCase)
+                || t.Equals("None",            StringComparison.OrdinalIgnoreCase)
+                || t.Equals("TBD",             StringComparison.OrdinalIgnoreCase);
+        }
+
+        r.Dependencies    = r.Dependencies.Where(s => !IsPlaceholder(s)).ToList();
+        r.Recommendations = r.Recommendations.Where(s => !IsPlaceholder(s)).ToList();
+        r.KnownIssues     = r.KnownIssues.Where(s => !IsPlaceholder(s)).ToList();
+
+        r.Features = r.Features
+            .Where(f => !string.IsNullOrWhiteSpace(f.Name)
+                     && !IsPlaceholder(f.Name)
+                     && !string.IsNullOrWhiteSpace(f.Description))
+            .ToList();
+
+        r.ApiEndpoints = r.ApiEndpoints
+            .Where(e => !string.IsNullOrWhiteSpace(e.Path)
+                     && !IsPlaceholder(e.Path)
+                     && !e.Path.Equals("/api/example", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
     /// <summary>
     /// Last-resort fallback: uses regex to extract the values of known string fields
     /// from a JSON response that could not be deserialised by any other strategy.
@@ -926,19 +1114,19 @@ public class GroqService : IGroqService
     private static string GetJsonSchema(DocumentationType docType) => docType switch
     {
         DocumentationType.UserGuide =>
-            """{"executiveSummary":"what/who/value","userGuide":"## sections with numbered steps","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"2-3 sentences: what the product does and who it is for","userGuide":"## Getting Started\n## Key Features\n## Step-by-Step Usage\n## Troubleshooting","features":[{"name":"Feature name","description":"What it does","usageExample":"How to use it"}],"recommendations":["Actionable tip"],"knownIssues":["Known limitation"]}""",
 
         DocumentationType.TechnicalDocumentation =>
-            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — effect","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text","responseBody":"Describe response fields in plain text"}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"2-3 sentences: product purpose, primary tech stack, target users","technicalOverview":"## Purpose\n## Architecture Pattern\n## Tech Stack\n## Key Frameworks","architectureDescription":"## System Components\n## Data Flow\n## External Integrations","setupInstructions":"## Prerequisites\n## Installation\n## Configuration\n## Running","configurationGuide":"List each config key with type, default value, and effect","features":[{"name":"Feature name","description":"What it does","usageExample":"Code or command example"}],"apiEndpoints":[{"method":"GET","path":"/api/resource","description":"What this endpoint does","requestBody":"Describe request parameters in plain text","responseBody":"Describe response fields in plain text"}],"dependencies":["PackageName vX.Y — what it provides"],"recommendations":["Actionable improvement"],"knownIssues":["Known limitation"]}""",
 
         DocumentationType.ApiDocumentation =>
-            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text, e.g. id (int, required)","responseBody":"Describe response fields in plain text, e.g. returns user object with id and name"}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"2-3 sentences: API base URL, authentication method, main purpose","technicalOverview":"## Authentication\n## Request Headers\n## Error Codes\n## Rate Limits","apiEndpoints":[{"method":"GET","path":"/api/resource","description":"What this endpoint does","requestBody":"Describe request parameters in plain text","responseBody":"Describe response fields in plain text"}],"dependencies":["Relevant library or SDK"],"recommendations":["API improvement suggestion"],"knownIssues":["Known API limitation"]}""",
 
         DocumentationType.ArchitectureOverview =>
-            """{"executiveSummary":"system/philosophy/stack","technicalOverview":"## Stack ## Dependencies ## Runtime","architectureDescription":"## Overview ## Components ## Data Flow ## Integrations ## Scalability ## Security","configurationGuide":"infra/env/deployment config","dependencies":["Library vX — architectural role"],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"2-3 sentences: system name, core purpose, architectural philosophy","technicalOverview":"## Tech Stack\n## Runtime Environment\n## Key Dependencies","architectureDescription":"## System Components\n## Data Flow\n## External Integrations\n## Scalability\n## Security","configurationGuide":"Infrastructure and environment configuration details","dependencies":["LibraryName vX — architectural role"],"recommendations":["Architecture improvement"],"knownIssues":["Architecture limitation"]}""",
 
         _ /* FullDocumentation */ =>
-            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Security","userGuide":"## Getting Started ## Key Features ## How To Use","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — purpose","features":[{"name":"","description":"","usageExample":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
+            """{"executiveSummary":"2-3 sentences: what the system does, who uses it, its main value","technicalOverview":"## Tech Stack\n## Architecture Pattern\n## Key Frameworks","architectureDescription":"## System Components\n## Data Flow\n## Security","userGuide":"## Getting Started\n## Key Features\n## How To Use","setupInstructions":"## Prerequisites\n## Installation\n## Running","configurationGuide":"List each config key with type, default, and effect","features":[{"name":"Feature name","description":"What it does","usageExample":"How to use it"}],"dependencies":["PackageName vX.Y — purpose"],"recommendations":["Actionable improvement"],"knownIssues":["Known limitation"]}"""
     };
 
     // ─── System prompt (concise — every token counts on free tier) ──────────────────
@@ -956,10 +1144,12 @@ public class GroqService : IGroqService
 
         return $"{role} Rules: " +
                "1) Document ONLY the project in SOURCE DATA — never Docu-Genius or this tool. " +
-               "2) Output ONLY a raw JSON object, first char { last char }, no markdown fences. " +
-               "3) Use ## headings and bullet lists inside string values for structure. " +
-               "4) NEVER embed raw JSON inside string values — describe request/response fields in plain English. " +
-               "5) Use real names and values from SOURCE DATA, not generic placeholders.";
+               "2) Output ONLY a raw JSON object — first char '{', last char '}', no markdown fences. " +
+               "3) EVERY field in the schema must be populated with its OWN content. " +
+               "4) executiveSummary = 2-3 sentences ONLY. All details go in the OTHER fields. " +
+               "5) Use ## headings inside each string field to organise its own content. " +
+               "6) NEVER embed raw JSON inside string values — use plain English descriptions. " +
+               "7) Use real names and values from SOURCE DATA, not generic placeholder text.";
     }
 
     private static string Truncate(string text, int maxLength) =>
