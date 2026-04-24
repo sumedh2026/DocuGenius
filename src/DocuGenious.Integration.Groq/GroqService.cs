@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -498,6 +499,9 @@ public class GroqService : IGroqService
     ///              (e.g. requestBody / responseBody fields) don't fool the extractor.
     /// Strategy 5 — truncated-JSON repair: closes unclosed braces/brackets left when
     ///              MaxOutputTokenCount is hit before the LLM finished the response.
+    /// Strategy 6 — nested-object flattening: converts fields that should be strings
+    ///              but were returned as objects (e.g. {"executiveSummary":{"description":"…"}})
+    ///              into plain strings so deserialisation can succeed.
     /// </summary>
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
     {
@@ -538,6 +542,13 @@ public class GroqService : IGroqService
         var truncRepaired = TryRepairTruncatedJson(raw);
         if (truncRepaired != null && truncRepaired != trimmed && truncRepaired != extracted)
             foreach (var c in WithRepaired(truncRepaired)) yield return c;
+
+        // 6. Nested-object flattening — model sometimes returns
+        //    {"executiveSummary":{"description":"…"}} instead of {"executiveSummary":"…"}.
+        //    Flatten those object-valued string fields to plain strings and retry.
+        var flattened = FlattenStringFields(trimmed);
+        if (flattened != null)
+            foreach (var c in WithRepaired(flattened)) yield return c;
     }
 
     /// <summary>
@@ -694,6 +705,109 @@ public class GroqService : IGroqService
         }
 
         return null;
+    }
+
+    // The AnalysisResult string fields that the model may mistakenly return as nested objects.
+    private static readonly HashSet<string> _stringFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "executiveSummary", "technicalOverview", "architectureDescription",
+        "userGuide", "setupInstructions", "configurationGuide"
+    };
+
+    /// <summary>
+    /// Detects top-level properties that should be strings but were returned as objects
+    /// (e.g. <c>{"executiveSummary":{"description":"…","techStack":"…"}}</c>) and rewrites
+    /// them as flat strings, using the property names as <c>## heading</c> separators.
+    /// Returns null when no nested-object fields are found so callers can skip it cheaply.
+    /// </summary>
+    private static string? FlattenStringFields(string json)
+    {
+        try
+        {
+            var docOpts = new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling     = JsonCommentHandling.Skip
+            };
+            using var doc = JsonDocument.Parse(json, docOpts);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+
+            // Check whether any string field is actually an object — bail early if not
+            bool hasNested = doc.RootElement.EnumerateObject()
+                .Any(p => _stringFields.Contains(p.Name) &&
+                          p.Value.ValueKind == JsonValueKind.Object);
+            if (!hasNested) return null;
+
+            // Rewrite the JSON, flattening object-valued string fields
+            var mem    = new MemoryStream();
+            var writer = new Utf8JsonWriter(mem);
+            writer.WriteStartObject();
+
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                writer.WritePropertyName(prop.Name);
+
+                if (_stringFields.Contains(prop.Name) &&
+                    prop.Value.ValueKind == JsonValueKind.Object)
+                {
+                    var sb = new StringBuilder();
+                    ExtractStringsFromElement(prop.Value, sb, depth: 0);
+                    writer.WriteStringValue(sb.ToString().Trim());
+                }
+                else
+                {
+                    prop.Value.WriteTo(writer);
+                }
+            }
+
+            writer.WriteEndObject();
+            writer.Flush();
+            return Encoding.UTF8.GetString(mem.ToArray());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Recursively extracts text from a <see cref="JsonElement"/>, formatting
+    /// object property names as <c>## Heading</c> markers and array items as bullets.
+    /// </summary>
+    private static void ExtractStringsFromElement(JsonElement el, StringBuilder sb, int depth)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.String:
+                if (sb.Length > 0) sb.AppendLine();
+                sb.Append(el.GetString());
+                break;
+
+            case JsonValueKind.Object:
+                foreach (var prop in el.EnumerateObject())
+                {
+                    if (sb.Length > 0) sb.AppendLine();
+                    // Use ## for first depth, ### for deeper nesting
+                    sb.AppendLine(depth == 0 ? $"## {prop.Name}" : $"### {prop.Name}");
+                    ExtractStringsFromElement(prop.Value, sb, depth + 1);
+                }
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in el.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        if (sb.Length > 0) sb.AppendLine();
+                        sb.Append($"- {item.GetString()}");
+                    }
+                    else
+                    {
+                        ExtractStringsFromElement(item, sb, depth);
+                    }
+                }
+                break;
+        }
     }
 
     private static bool HasMeaningfulContent(AnalysisResult r)
