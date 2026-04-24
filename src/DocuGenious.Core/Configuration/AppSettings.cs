@@ -35,7 +35,8 @@ public class GroqSettings
     /// </summary>
     public string Model { get; set; } = "compound-beta";
 
-    public int MaxTokens { get; set; } = 6000;
+    /// <summary>Maximum output tokens per request. compound-beta supports up to 8192.</summary>
+    public int MaxTokens { get; set; } = 8192;
 
     /// <summary>
     /// Free-tier tokens-per-minute (TPM) cap for the chosen model.
