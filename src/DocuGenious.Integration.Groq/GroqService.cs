@@ -154,9 +154,15 @@ public class GroqService : IGroqService
             new UserChatMessage(TruncateIfNeeded(userPrompt))
         };
 
+        // FullDocumentation covers all sections (overview + guide + setup + architecture +
+        // features) so it needs a larger token budget than focused doc types.
+        var maxTokens = docType == DocumentationType.FullDocumentation
+            ? Math.Max(_settings.MaxTokens, 5000)
+            : _settings.MaxTokens;
+
         var options = new ChatCompletionOptions
         {
-            MaxOutputTokenCount = _settings.MaxTokens,
+            MaxOutputTokenCount = maxTokens,
             // 0.4 gives deterministic output while allowing natural language variation
             Temperature = 0.4f
         };
@@ -230,7 +236,7 @@ public class GroqService : IGroqService
                 throw new InvalidOperationException(
                     $"Groq free-tier rate limit exceeded. " +
                     $"The llama-3.1-8b-instant model allows 6,000 tokens per minute on the free plan, " +
-                    $"and this request used approximately {_settings.MaxTokens + 500} tokens. " +
+                    $"and this request used approximately {maxTokens + 500} tokens. " +
                     $"{hint} " +
                     $"You can also reduce Groq:MaxTokens in appsettings.json, " +
                     $"or upgrade your plan at https://console.groq.com", ex);
@@ -465,6 +471,8 @@ public class GroqService : IGroqService
     /// Strategy 4 — brace extraction: first { to the matching top-level }
     ///              Skips braces inside quoted strings so embedded JSON examples
     ///              (e.g. requestBody / responseBody fields) don't fool the extractor.
+    /// Strategy 5 — truncated-JSON repair: closes unclosed braces/brackets left when
+    ///              MaxOutputTokenCount is hit before the LLM finished the response.
     /// </summary>
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
     {
@@ -498,13 +506,21 @@ public class GroqService : IGroqService
         var extracted = ExtractTopLevelJson(raw);
         if (extracted != null && extracted != trimmed)
             foreach (var c in WithRepaired(extracted)) yield return c;
+
+        // 5. Truncated-JSON repair — handles responses cut off when MaxOutputTokenCount
+        //    is reached before the LLM could emit all closing braces/brackets.
+        //    Reconstructs the missing closers from the open-bracket stack.
+        var truncRepaired = TryRepairTruncatedJson(raw);
+        if (truncRepaired != null && truncRepaired != trimmed && truncRepaired != extracted)
+            foreach (var c in WithRepaired(truncRepaired)) yield return c;
     }
 
     /// <summary>
-    /// Repairs a JSON string where the LLM has emitted literal newline / carriage-return /
-    /// tab characters inside quoted string values (instead of the required \n / \r / \t
-    /// escape sequences).  Walks the text character-by-character, tracking whether the
-    /// cursor is inside a JSON string, and escapes any bare control characters it finds.
+    /// Repairs a JSON string where the LLM has emitted literal control characters inside
+    /// quoted string values (instead of the required escape sequences).
+    /// Walks the text character-by-character, tracking whether the cursor is inside a JSON
+    /// string, and escapes any bare control characters (U+0000–U+001F, U+007F) it finds.
+    /// Handles \n, \r, \t, \b, \f explicitly and all others as \uXXXX.
     /// </summary>
     private static string FixLiteralNewlinesInStrings(string json)
     {
@@ -538,13 +554,20 @@ public class GroqService : IGroqService
 
             if (inStr)
             {
-                // Replace literal control characters with valid JSON escape sequences
+                // Escape ALL control characters that are illegal raw in JSON strings
                 switch (ch)
                 {
                     case '\n': sb.Append("\\n");  break;
                     case '\r': sb.Append("\\r");  break;
                     case '\t': sb.Append("\\t");  break;
-                    default:   sb.Append(ch);     break;
+                    case '\b': sb.Append("\\b");  break;
+                    case '\f': sb.Append("\\f");  break;
+                    default:
+                        if (ch < '\x20' || ch == '\x7F')
+                            sb.Append($"\\u{(int)ch:x4}");
+                        else
+                            sb.Append(ch);
+                        break;
                 }
             }
             else
@@ -557,22 +580,74 @@ public class GroqService : IGroqService
     }
 
     /// <summary>
+    /// Repairs JSON that has been truncated mid-stream (e.g. because MaxOutputTokenCount
+    /// was reached before the LLM finished writing).  Rebuilds the closing bracket/brace
+    /// stack from the characters already emitted and appends the missing closers.
+    /// Returns null if the JSON is already balanced or cannot be repaired.
+    /// </summary>
+    private static string? TryRepairTruncatedJson(string raw)
+    {
+        var  stack   = new Stack<char>();
+        bool inStr   = false;
+        bool escaped = false;
+        bool hasOpenBrace = false;
+
+        foreach (var ch in raw)
+        {
+            if (escaped) { escaped = false; continue; }
+            if (ch == '\\' && inStr) { escaped = true; continue; }
+            if (ch == '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+
+            switch (ch)
+            {
+                case '{': stack.Push('}'); hasOpenBrace = true; break;
+                case '[': stack.Push(']'); break;
+                case '}': if (stack.Count > 0 && stack.Peek() == '}') stack.Pop(); break;
+                case ']': if (stack.Count > 0 && stack.Peek() == ']') stack.Pop(); break;
+            }
+        }
+
+        // Already balanced, over-closed, or not a JSON object
+        if (stack.Count == 0 || !hasOpenBrace) return null;
+
+        var sb = new StringBuilder(raw.TrimEnd());
+
+        // If we ended inside a string, close it first
+        if (inStr) sb.Append('"');
+
+        // Remove a trailing comma or colon left before the cut-off point
+        while (sb.Length > 0 && sb[sb.Length - 1] is ',' or ':')
+            sb.Length--;
+
+        // Close all open structures in reverse order
+        while (stack.Count > 0)
+            sb.Append(stack.Pop());
+
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Walks <paramref name="raw"/> and returns the substring from the first top-level
     /// '{' to its matching '}', ignoring braces that appear inside quoted strings.
+    /// Uses proper escape-state tracking (handles \\" correctly).
     /// Returns null if no balanced pair is found.
     /// </summary>
     private static string? ExtractTopLevelJson(string raw)
     {
-        int start  = -1;
-        int depth  = 0;
-        bool inStr = false;
+        int  start   = -1;
+        int  depth   = 0;
+        bool inStr   = false;
+        bool escaped = false;
 
         for (int i = 0; i < raw.Length; i++)
         {
             var ch = raw[i];
 
-            // Toggle string mode on unescaped "
-            if (ch == '"' && (i == 0 || raw[i - 1] != '\\'))
+            if (escaped) { escaped = false; continue; }
+            if (ch == '\\' && inStr) { escaped = true; continue; }
+
+            if (ch == '"')
             {
                 inStr = !inStr;
                 continue;
@@ -736,13 +811,13 @@ public class GroqService : IGroqService
             """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults/effects","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
 
         DocumentationType.ApiDocumentation =>
-            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text, e.g. id (int, required)","responseBody":"Describe response fields in plain text, e.g. returns user object with id and name"}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
 
         DocumentationType.ArchitectureOverview =>
             """{"executiveSummary":"system/philosophy/stack","technicalOverview":"## Stack ## Dependencies ## Runtime","architectureDescription":"## Overview ## Components ## Data Flow ## Integrations ## Scalability ## Security","configurationGuide":"infra/env/deployment config","dependencies":["Library vX — architectural role"],"recommendations":[""],"knownIssues":[""]}""",
 
         _ /* FullDocumentation */ =>
-            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Services ## Security","userGuide":"## sections with steps","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"keys/types/defaults","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"","path":"","description":"","requestBody":"","responseBody":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
+            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Security","userGuide":"## Getting Started ## Key Features ## How To Use","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — purpose","features":[{"name":"","description":"","usageExample":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
     };
 
     // ─── System prompt (concise — every token counts on free tier) ──────────────────
