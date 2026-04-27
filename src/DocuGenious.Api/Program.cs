@@ -1,8 +1,8 @@
 using DocuGenious.Api.Services;
 using DocuGenious.Core.Configuration;
 using DocuGenious.Core.Interfaces;
+using DocuGenious.Integration.Gemini;
 using DocuGenious.Integration.Git;
-using DocuGenious.Integration.Groq;
 using DocuGenious.Integration.Jira;
 using DocuGenious.Integration.Pdf;
 
@@ -64,7 +64,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<JobStatusService>();
 builder.Services.AddSingleton<IJiraService, JiraService>();
 builder.Services.AddSingleton<IGitService, GitService>();
-builder.Services.AddSingleton<IGroqService, GroqService>();
+builder.Services.AddSingleton<IGroqService, GeminiService>();
 builder.Services.AddSingleton<IPdfService, PdfService>();
 
 // ─── API + Swagger ────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title       = "Docu-Genius API",
         Version     = "v1",
-        Description = "AI-Powered Documentation Generator API — backed by Groq / LLaMA"
+        Description = "AI-Powered Documentation Generator API — backed by Google Gemini"
     });
 });
 

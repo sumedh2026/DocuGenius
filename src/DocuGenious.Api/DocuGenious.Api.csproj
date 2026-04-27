@@ -15,7 +15,7 @@
     <ProjectReference Include="..\DocuGenious.Core\DocuGenious.Core.csproj" />
     <ProjectReference Include="..\DocuGenious.Integration.Jira\DocuGenious.Integration.Jira.csproj" />
     <ProjectReference Include="..\DocuGenious.Integration.Git\DocuGenious.Integration.Git.csproj" />
-    <ProjectReference Include="..\DocuGenious.Integration.Groq\DocuGenious.Integration.Groq.csproj" />
+    <ProjectReference Include="..\DocuGenious.Integration.Gemini\DocuGenious.Integration.Gemini.csproj" />
     <ProjectReference Include="..\DocuGenious.Integration.Pdf\DocuGenious.Integration.Pdf.csproj" />
   </ItemGroup>
 
