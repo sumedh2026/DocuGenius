@@ -153,7 +153,7 @@ public class JiraService : IJiraService
         else if (tickets.Count == 0 && failedIds.Count > 0)
         {
             // Every requested ticket failed — surface a clear error instead of sending
-            // empty source data to Groq, which would cause hallucinated content.
+            // empty source data to Gemini AI, which would cause hallucinated content.
             throw new InvalidOperationException(
                 $"Could not fetch any of the requested JIRA ticket(s): {string.Join(", ", failedIds)}. " +
                 "Please verify the ticket IDs exist and that your JIRA credentials have access to them.");

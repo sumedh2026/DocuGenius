@@ -33,7 +33,7 @@ public class DocumentationController : ControllerBase
     }
 
     /// <summary>
-    /// All-in-one endpoint: fetches JIRA/Git data, analyses with Groq, generates PDF, returns file path.
+    /// All-in-one endpoint: fetches JIRA/Git data, analyses with Gemini AI, generates PDF, returns file path.
     /// </summary>
     [HttpPost("generate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -82,7 +82,7 @@ public class DocumentationController : ControllerBase
                 tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
 
                 // Guard: if every ticket failed the service throws, but defend here too so
-                // we never send empty source data to Groq (which causes hallucinated content).
+                // we never send empty source data to Gemini (which causes hallucinated content).
                 if (tickets.Count == 0)
                     return BadRequest(new
                     {
@@ -132,8 +132,8 @@ public class DocumentationController : ControllerBase
                 Status("✅ Repository analysed successfully");
             }
 
-            // Step 3: Analyse with Groq
-            Status($"🤖 Analysing with Groq AI — generating {request.DocumentationType} (this may take a minute)…");
+            // Step 3: Analyse with Gemini AI
+            Status($"🤖 Analysing with Gemini AI — generating {request.DocumentationType} (this may take a moment)…");
             AnalysisResult analysisResult = request.SourceType switch
             {
                 SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),

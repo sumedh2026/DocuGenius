@@ -30,9 +30,9 @@ public class DocumentationApiService
 		}
 	}
 
-	// ─── Groq ─────────────────────────────────────────────────────────────────────
+	// ─── Gemini AI ────────────────────────────────────────────────────────────────
 
-	public async Task<ConnectionResult> ValidateGroqAsync()
+	public async Task<ConnectionResult> ValidateGeminiAsync()
 	{
 		try
 		{

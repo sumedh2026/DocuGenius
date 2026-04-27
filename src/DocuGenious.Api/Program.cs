@@ -79,7 +79,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title       = "Docu-Genius API",
         Version     = "v1",
-        Description = "AI-Powered Documentation Generator API — backed by Google Gemini"
+        Description = "AI-Powered Documentation Generator API — backed by Google Gemini AI"
     });
 });
 

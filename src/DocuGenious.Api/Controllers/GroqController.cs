@@ -18,7 +18,7 @@ public class GroqController : ControllerBase
     }
 
     /// <summary>
-    /// Validate the Groq connection.
+    /// Validate the Gemini AI connection.
     /// </summary>
     [HttpGet("validate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -31,13 +31,13 @@ public class GroqController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Groq connection validation failed");
+            _logger.LogError(ex, "Gemini AI connection validation failed");
             return Ok(new { connected = false, error = ex.Message });
         }
     }
 
     /// <summary>
-    /// Analyse JIRA tickets using Groq AI.
+    /// Analyse JIRA tickets using Gemini AI.
     /// </summary>
     [HttpPost("analyse/jira")]
     [ProducesResponseType(typeof(AnalysisResult), StatusCodes.Status200OK)]
@@ -55,13 +55,13 @@ public class GroqController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error analysing JIRA tickets with Groq");
+            _logger.LogError(ex, "Error analysing JIRA tickets with Gemini AI");
             return StatusCode(500, new { message = ex.Message });
         }
     }
 
     /// <summary>
-    /// Analyse a Git repository using Groq AI.
+    /// Analyse a Git repository using Gemini AI.
     /// </summary>
     [HttpPost("analyse/git")]
     [ProducesResponseType(typeof(AnalysisResult), StatusCodes.Status200OK)]
@@ -79,13 +79,13 @@ public class GroqController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error analysing Git repository with Groq");
+            _logger.LogError(ex, "Error analysing Git repository with Gemini AI");
             return StatusCode(500, new { message = ex.Message });
         }
     }
 
     /// <summary>
-    /// Analyse combined JIRA + Git context using Groq AI.
+    /// Analyse combined JIRA + Git context using Gemini AI.
     /// </summary>
     [HttpPost("analyse/combined")]
     [ProducesResponseType(typeof(AnalysisResult), StatusCodes.Status200OK)]
@@ -106,7 +106,7 @@ public class GroqController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error analysing combined context with Groq");
+            _logger.LogError(ex, "Error analysing combined context with Gemini AI");
             return StatusCode(500, new { message = ex.Message });
         }
     }
