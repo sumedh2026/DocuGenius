@@ -1118,34 +1118,28 @@ public class GroqService : IGroqService
             if (!string.IsNullOrWhiteSpace(t.Description))
             {
                 sb.AppendLine("Description:");
-                sb.AppendLine(Truncate(t.Description, 600));
+                sb.AppendLine(Truncate(t.Description, 350));
             }
 
             if (t.AcceptanceCriteria.Count > 0)
             {
                 sb.AppendLine("Acceptance Criteria:");
-                foreach (var ac in t.AcceptanceCriteria)
-                    sb.AppendLine($"  - {ac}");
+                foreach (var ac in t.AcceptanceCriteria.Take(5))
+                    sb.AppendLine($"  - {Truncate(ac, 120)}");
             }
-
-            if (t.Labels.Count > 0)
-                sb.AppendLine($"Labels: {string.Join(", ", t.Labels)}");
-
-            if (t.Components.Count > 0)
-                sb.AppendLine($"Components: {string.Join(", ", t.Components)}");
 
             if (t.SubTasks.Count > 0)
             {
                 sb.AppendLine("Sub-tasks:");
-                foreach (var st in t.SubTasks)
-                    sb.AppendLine($"  - {st.Key}: {st.Summary} [{st.Status}]");
+                foreach (var st in t.SubTasks.Take(5))
+                    sb.AppendLine($"  - {st.Key}: {st.Summary}");
             }
 
             if (t.Comments.Count > 0)
             {
                 sb.AppendLine("Comments:");
-                foreach (var c in t.Comments.Take(2))
-                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 100)}");
+                foreach (var c in t.Comments.Take(1))
+                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 80)}");
             }
 
             sb.AppendLine();
@@ -1161,37 +1155,30 @@ public class GroqService : IGroqService
         sb.AppendLine($"Repository: {repo.RepositoryUrl ?? repo.RepositoryPath}");
         sb.AppendLine($"Current Branch: {repo.CurrentBranch}");
         sb.AppendLine($"Total Commits: {repo.TotalCommits}");
-        sb.AppendLine($"Contributors: {string.Join(", ", repo.Contributors.Take(10))}");
+        sb.AppendLine($"Contributors: {string.Join(", ", repo.Contributors.Take(5))}");
 
         if (repo.Technologies.Count > 0)
             sb.AppendLine($"Technologies: {string.Join(", ", repo.Technologies)}");
 
         if (repo.Branches.Count > 0)
-            sb.AppendLine($"Branches: {string.Join(", ", repo.Branches.Take(10))}");
-
-        // Directory structure
-        if (repo.Structure != null)
-        {
-            sb.AppendLine("\nDirectory Structure:");
-            AppendStructure(sb, repo.Structure, 0);
-        }
+            sb.AppendLine($"Branches: {string.Join(", ", repo.Branches.Take(5))}");
 
         // Recent commits
         if (repo.RecentCommits.Count > 0)
         {
             sb.AppendLine("\nRecent Commits:");
-            foreach (var c in repo.RecentCommits.Take(8))
-                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {c.Message}");
+            foreach (var c in repo.RecentCommits.Take(5))
+                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {Truncate(c.Message, 80)}");
         }
 
-        // Source file summaries
+        // Source file summaries — limit files and content to keep input lean
         if (repo.Files.Count > 0)
         {
-            sb.AppendLine($"\nSource Files:");
-            foreach (var f in repo.Files.Where(x => x.Content != null).Take(8))
+            sb.AppendLine("\nSource Files:");
+            foreach (var f in repo.Files.Where(x => x.Content != null).Take(5))
             {
                 sb.AppendLine($"\n--- {f.Path} ---");
-                sb.AppendLine(Truncate(f.Content!, 400));
+                sb.AppendLine(Truncate(f.Content!, 250));
             }
         }
 
@@ -1208,75 +1195,76 @@ public class GroqService : IGroqService
             AppendStructure(sb, child, indent + 1);
     }
 
-    // ─── Per-doc-type: focus instructions (kept short to save tokens) ───────────────
+    // ─── Per-doc-type: focus instructions ────────────────────────────────────────────
+    // Kept to one short sentence — every token saved here is one more for the output.
 
     private static string GetFocusInstructions(DocumentationType docType) => docType switch
     {
         DocumentationType.UserGuide =>
-            "Write a USER GUIDE for non-technical users. Plain English, no jargon. Include step-by-step instructions, common Q&A, and troubleshooting tips.",
+            "USER GUIDE: plain English, no jargon, step-by-step for non-technical users.",
 
         DocumentationType.TechnicalDocumentation =>
-            "Write TECHNICAL DOCUMENTATION for developers. Use actual class names, methods, and config keys from SOURCE DATA. Include setup commands and configuration details.",
+            "TECHNICAL DOCS: real class names, config keys, setup commands from SOURCE DATA.",
 
         DocumentationType.ApiDocumentation =>
-            "Write API REFERENCE for developers. Document every endpoint with method, path, and plain-text request/response descriptions from SOURCE DATA. Do NOT embed raw JSON inside string values.",
+            "API REFERENCE: every endpoint with method, path, plain-text request/response.",
 
         DocumentationType.ArchitectureOverview =>
-            "Write an ARCHITECTURE OVERVIEW for senior engineers. Cover components, data flow, external integrations, and technology choices from SOURCE DATA.",
+            "ARCHITECTURE OVERVIEW: components, data flow, tech choices from SOURCE DATA.",
 
         _ =>
-            "Write COMPREHENSIVE DOCUMENTATION covering all audiences: executive summary, technical details, user guide, setup, API endpoints, and architecture."
+            "FULL DOCUMENTATION: executive summary, tech details, user guide, setup, architecture."
     };
 
-    // ─── Per-doc-type: compact JSON schemas (short hints save tokens) ───────────────
+    // ─── Per-doc-type: minimal JSON schemas ──────────────────────────────────────────
+    // Only fields actually used by each document type are included.
+    // Shorter hints = fewer input tokens = more budget for the generated content.
 
     private static string GetJsonSchema(DocumentationType docType) => docType switch
     {
         DocumentationType.UserGuide =>
-            """{"executiveSummary":"what/who/value","userGuide":"## sections with numbered steps","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"1-2 sentences","userGuide":"## Getting Started\n## Key Features\n## How To Use","features":[{"name":"","description":"","usageExample":""}],"recommendations":[""]}""",
 
         DocumentationType.TechnicalDocumentation =>
-            """{"executiveSummary":"purpose/stack/scope","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Integrations","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — effect","features":[{"name":"","description":"","usageExample":""}],"apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text","responseBody":"Describe response fields in plain text"}],"dependencies":["Package vX — reason"],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"purpose/stack","technicalOverview":"## Tech Stack\n## Architecture","setupInstructions":"## Prerequisites\n## Install\n## Run","configurationGuide":"key=type (default) — effect","features":[{"name":"","description":"","usageExample":""}],"dependencies":["pkg vX — reason"],"recommendations":[""]}""",
 
         DocumentationType.ApiDocumentation =>
-            """{"executiveSummary":"base URL/auth/purpose","technicalOverview":"## Auth ## Headers ## Errors ## Status Codes","apiEndpoints":[{"method":"GET","path":"/api/example","description":"What this endpoint does","requestBody":"Describe parameters in plain text, e.g. id (int, required)","responseBody":"Describe response fields in plain text, e.g. returns user object with id and name"}],"dependencies":[""],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"base URL/auth","technicalOverview":"## Auth ## Errors","apiEndpoints":[{"method":"GET","path":"/api/x","description":"what it does","requestBody":"params in plain text","responseBody":"response in plain text"}],"recommendations":[""]}""",
 
         DocumentationType.ArchitectureOverview =>
-            """{"executiveSummary":"system/philosophy/stack","technicalOverview":"## Stack ## Dependencies ## Runtime","architectureDescription":"## Overview ## Components ## Data Flow ## Integrations ## Scalability ## Security","configurationGuide":"infra/env/deployment config","dependencies":["Library vX — architectural role"],"recommendations":[""],"knownIssues":[""]}""",
+            """{"executiveSummary":"system/stack","technicalOverview":"## Stack ## Runtime","architectureDescription":"## Components\n## Data Flow\n## Security","dependencies":["lib vX — role"],"recommendations":[""]}""",
 
         _ /* FullDocumentation */ =>
-            """{"executiveSummary":"what/who/stack/value","technicalOverview":"## Purpose ## Architecture ## Stack","architectureDescription":"## Components ## Data Flow ## Security","userGuide":"## Getting Started ## Key Features ## How To Use","setupInstructions":"## Prerequisites ## Install ## Configure ## Run","configurationGuide":"key=type (default) — purpose","features":[{"name":"","description":"","usageExample":""}],"dependencies":["Package vX — purpose"],"recommendations":[""],"knownIssues":[""]}"""
+            """{"executiveSummary":"what/who/stack","technicalOverview":"## Stack\n## Architecture","userGuide":"## Getting Started\n## How To Use","setupInstructions":"## Install\n## Configure\n## Run","configurationGuide":"key=type — purpose","features":[{"name":"","description":"","usageExample":""}],"dependencies":["pkg vX — purpose"],"recommendations":[""]}"""
     };
 
-    // ─── System prompt (concise — every token counts on free tier) ──────────────────
+    // ─── System prompt ───────────────────────────────────────────────────────────────
+    // Three rules only — minimal tokens, maximum clarity.
 
     private static string GetSystemPrompt(DocumentationType docType)
     {
         var role = docType switch
         {
-            DocumentationType.UserGuide             => "You are a technical writer for non-technical users.",
-            DocumentationType.TechnicalDocumentation => "You are a senior software engineer writing developer docs.",
-            DocumentationType.ApiDocumentation      => "You are an API documentation specialist.",
-            DocumentationType.ArchitectureOverview  => "You are a principal software architect.",
-            _                                        => "You are a technical writer covering all audiences."
+            DocumentationType.UserGuide              => "Technical writer for non-technical users.",
+            DocumentationType.TechnicalDocumentation => "Senior developer writing technical docs.",
+            DocumentationType.ApiDocumentation       => "API documentation specialist.",
+            DocumentationType.ArchitectureOverview   => "Principal software architect.",
+            _                                         => "Technical writer covering all audiences."
         };
 
-        return $"{role} Rules: " +
-               "1) Document ONLY the project in SOURCE DATA — never Docu-Genius or this tool. " +
-               "2) Output ONLY a raw JSON object, first char { last char }, no markdown fences. " +
-               "3) Use ## headings and bullet lists inside string values for structure. " +
-               "4) NEVER embed raw JSON inside string values — describe request/response fields in plain English. " +
-               "5) Use real names and values from SOURCE DATA, not generic placeholders.";
+        return $"You are a {role} " +
+               "Output ONLY a raw JSON object (first char {, last char }), no markdown fences. " +
+               "Use ## headings inside string values for structure. " +
+               "Write real content from SOURCE DATA — no placeholders.";
     }
 
     private static string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "... [truncated]";
 
-    // Hard-cap the user prompt at 40,000 chars (≈10,000 tokens).
-    // This is a safety ceiling — the dynamic budget in CallOpenAiAsync further caps
-    // the output token count so input + output never exceeds the configured TpmLimit.
-    // 40K chars is generous enough for rich JIRA + Git combined contexts while keeping
-    // well within the 131K context window of groq/compound (or 128K for other models).
+    // Hard-cap the full user prompt at 14,000 chars (≈3,500 tokens).
+    // With a 6,000 TPM budget (llama-3.1-8b-instant) and ~150 tokens of system/schema
+    // overhead, this leaves ~2,350 tokens for the model output — enough for a solid
+    // document. For compound-beta (70K TPM) this cap never triggers in practice.
     private static string TruncateIfNeeded(string prompt) =>
-        prompt.Length > 40_000 ? prompt[..40_000] + "\n\n[Source data truncated to fit token limits]" : prompt;
+        prompt.Length > 14_000 ? prompt[..14_000] + "\n\n[Source data truncated]" : prompt;
 }
