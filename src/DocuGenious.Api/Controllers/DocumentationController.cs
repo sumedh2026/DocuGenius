@@ -2,6 +2,7 @@ using DocuGenious.Api.Services;
 using DocuGenious.Core.Interfaces;
 using DocuGenious.Core.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 
 namespace DocuGenious.Api.Controllers;
 
@@ -9,217 +10,175 @@ namespace DocuGenious.Api.Controllers;
 [Route("api/documentation")]
 public class DocumentationController : ControllerBase
 {
-    private readonly IJiraService _jiraService;
-    private readonly IGitService _gitService;
-    private readonly IGroqService _groqService;
-    private readonly IPdfService _pdfService;
-    private readonly JobStatusService _jobStatus;
-    private readonly ILogger<DocumentationController> _logger;
+	private readonly IJiraService _jiraService;
+	private readonly IGitService _gitService;
+	private readonly IGroqService _groqService;
+	private readonly IPdfService _pdfService;
+	private readonly JobStatusService _jobStatus;
+	private readonly ILogger<DocumentationController> _logger;
 
-    public DocumentationController(
-        IJiraService jiraService,
-        IGitService gitService,
-        IGroqService groqService,
-        IPdfService pdfService,
-        JobStatusService jobStatus,
-        ILogger<DocumentationController> logger)
-    {
-        _jiraService = jiraService;
-        _gitService  = gitService;
-        _groqService = groqService;
-        _pdfService  = pdfService;
-        _jobStatus   = jobStatus;
-        _logger      = logger;
-    }
+	public DocumentationController(
+		IJiraService jiraService,
+		IGitService gitService,
+		IGroqService groqService,
+		IPdfService pdfService,
+		JobStatusService jobStatus,
+		ILogger<DocumentationController> logger)
+	{
+		_jiraService = jiraService;
+		_gitService = gitService;
+		_groqService = groqService;
+		_pdfService = pdfService;
+		_jobStatus = jobStatus;
+		_logger = logger;
+	}
 
-    /// <summary>
-    /// All-in-one endpoint: fetches JIRA/Git data, analyses with Groq, generates PDF, returns file path.
-    /// </summary>
-    [HttpPost("generate")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GenerateDocumentation([FromBody] DocumentationRequest request)
-    {
-        if (request == null)
-            return BadRequest(new { message = "Request body is required" });
+	[HttpPost("generate")]
+	public async Task<IActionResult> GenerateDocumentation([FromBody] DocumentationRequest request)
+	{
+		if (request == null)
+			return BadRequest(new { message = "Request body is required." });
 
-        // Validate based on source type
-        if (request.SourceType is SourceType.JiraOnly or SourceType.Both)
-        {
-            if (request.JiraTicketIds.Count == 0 && string.IsNullOrWhiteSpace(request.JiraTicketId))
-                return BadRequest(new { message = "At least one JIRA ticket ID is required" });
-        }
+		var jobId = request.JobId;
+		void Status(string msg)
+		{
+			_logger.LogInformation(msg);
+			if (!string.IsNullOrWhiteSpace(jobId))
+				_jobStatus.Update(jobId, msg);
+		}
 
-        if (request.SourceType is SourceType.GitOnly or SourceType.Both)
-        {
-            if (string.IsNullOrWhiteSpace(request.GitRepositoryUrl) && string.IsNullOrWhiteSpace(request.GitLocalPath))
-                return BadRequest(new { message = "Either gitRepositoryUrl or gitLocalPath is required" });
-        }
+		try
+		{
+			List<JiraTicket>? tickets = null;
+			GitRepositoryInfo? repoInfo = null;
 
-        var jobId = request.JobId;
-        void Status(string msg)
-        {
-            _logger.LogInformation("{Msg}", msg);
-            if (!string.IsNullOrWhiteSpace(jobId))
-                _jobStatus.Update(jobId, msg);
-        }
+			if (request.SourceType is SourceType.JiraOnly or SourceType.Both)
+			{
+				Status("📋 Fetching JIRA tickets…");
+				tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
+			}
 
-        try
-        {
-            List<JiraTicket>? tickets = null;
-            GitRepositoryInfo? repoInfo = null;
-
-            // Normalise single ticket ID into the list
-            if (!string.IsNullOrWhiteSpace(request.JiraTicketId) && !request.JiraTicketIds.Contains(request.JiraTicketId))
-                request.JiraTicketIds.Insert(0, request.JiraTicketId);
-
-            // Step 1: Fetch JIRA tickets
-            if (request.SourceType is SourceType.JiraOnly or SourceType.Both)
-            {
-                var count = request.JiraTicketIds.Count;
-                Status($"📋 Fetching {count} JIRA ticket{(count == 1 ? "" : "s")}…");
-                tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
-
-                // Guard: if every ticket failed the service throws, but defend here too so
-                // we never send empty source data to Groq (which causes hallucinated content).
-                if (tickets.Count == 0)
-                    return BadRequest(new
-                    {
-                        message = $"Could not fetch any of the requested JIRA ticket(s): " +
-                                  $"{string.Join(", ", request.JiraTicketIds)}. " +
-                                  "Please verify the ticket IDs exist and that your JIRA credentials have access."
-                    });
-
-                Status($"✅ Fetched {tickets.Count} JIRA ticket{(tickets.Count == 1 ? "" : "s")} successfully");
-            }
-            // User Guide requires every ticket to be Done or Complete
-            if (request.DocumentationType == DocumentationType.UserGuide && tickets != null && tickets.Count > 0)
-            {
-                var doneStatuses = new[] { "done", "complete", "completed" };
-                var notDoneTickets = tickets
-                    .Where(t => !doneStatuses.Any(s =>
-                        t.Status?.Contains(s, StringComparison.OrdinalIgnoreCase) == true))
-                    .ToList();
-
-                if (notDoneTickets.Count > 0)
-                {
-                    var details = string.Join(", ", notDoneTickets.Select(t =>
-                        $"{t.Key} (status: {(string.IsNullOrWhiteSpace(t.Status) ? "unknown" : t.Status)})"));
-
-                    return BadRequest(new
-                    {
-                        message =
-                            "User Guide can only be generated for completed tickets. " +
-                            $"The following ticket(s) are not done yet: {details}. " +
-                            "Please make sure all tickets have status 'Done' or 'Complete' before generating a User Guide."
-                    });
-                }
-            }
-			// Step 2: Fetch Git repository
 			if (request.SourceType is SourceType.GitOnly or SourceType.Both)
-            {
-                if (!string.IsNullOrWhiteSpace(request.GitRepositoryUrl))
-                {
-                    Status("🔍 Cloning and analysing remote Git repository…");
-                    repoInfo = await _gitService.CloneAndAnalyzeAsync(request.GitRepositoryUrl, request.GitBranch, request);
-                }
-                else
-                {
-                    Status($"🔍 Analysing local repository…");
-                    repoInfo = await _gitService.AnalyzeLocalRepositoryAsync(request.GitLocalPath!, request.GitBranch, request);
-                }
-                Status("✅ Repository analysed successfully");
-            }
+			{
+				Status("🔍 Analysing Git repository…");
+				repoInfo = !string.IsNullOrWhiteSpace(request.GitRepositoryUrl)
+					? await _gitService.CloneAndAnalyzeAsync(
+						request.GitRepositoryUrl, request.GitBranch, request)
+					: await _gitService.AnalyzeLocalRepositoryAsync(
+						request.GitLocalPath!, request.GitBranch, request);
+			}
 
-            // Step 3: Analyse with Groq
-            Status($"🤖 Analysing with Groq AI — generating {request.DocumentationType} (this may take a minute)…");
-            AnalysisResult analysisResult = request.SourceType switch
-            {
-                SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
-                SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
-                _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
-            };
-            Status("✅ AI analysis complete");
+			var jiraContext = tickets != null ? BuildJiraContext(tickets) : "";
+			var gitContext = repoInfo != null ? BuildGitContext(repoInfo) : "";
 
-            // Step 4: Generate PDF
-            var outputFileName = string.IsNullOrWhiteSpace(request.OutputFileName)
-                ? BuildDefaultFileName(request)
-                : request.OutputFileName;
+			Status("🤖 Analysing with Groq AI…");
 
-            Status($"📄 Building PDF document…");
-            var filePath = await _pdfService.GeneratePdfAsync(analysisResult, outputFileName);
+			var result = await _groqService.AnalyzeAsync(
+				jiraContext,
+				gitContext,
+				request.DocumentationType,
+				request.AdditionalContext);
 
-            Status("✅ Document ready!");
-            if (!string.IsNullOrWhiteSpace(jobId))
-                _jobStatus.Remove(jobId);   // clean up immediately on success
+			Status("📄 Generating PDF…");
+			var filePath = await _pdfService.GeneratePdfAsync(result, "Documentation");
 
-            return Ok(new
-            {
-                success  = true,
-                filePath,
-                fileName = Path.GetFileName(filePath)
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error generating documentation");
-            if (!string.IsNullOrWhiteSpace(jobId))
-                _jobStatus.Remove(jobId);   // clean up on error too
-            return StatusCode(500, new { message = ex.Message });
-        }
-    }
+			_jobStatus.Remove(jobId);
 
-    /// <summary>
-    /// Returns the current progress status for a running generation job.
-    /// The Blazor client polls this endpoint every ~1.5 s while generating.
-    /// Returns 204 No Content when the job is unknown or has already completed.
-    /// </summary>
-    [HttpGet("status/{jobId}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public IActionResult GetStatus(string jobId)
-    {
-        var status = _jobStatus.Get(jobId);
-        return status is null
-            ? NoContent()
-            : Ok(new { status });
-    }
+			return Ok(new
+			{
+				success = true,
+				fileName = Path.GetFileName(filePath),
+				filePath
+			});
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Generation failed");
+			_jobStatus.Remove(jobId);
+			return StatusCode(500, new { message = ex.Message });
+		}
+	}
 
-    /// <summary>Downloads a previously generated PDF by file name.</summary>
-    [HttpGet("download/{fileName}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult DownloadPdf(string fileName)
-    {
-        // Sanitise to prevent path traversal
-        var safeName = Path.GetFileName(fileName);
-        var outputDir = Path.GetFullPath("./output");
-        var fullPath  = Path.Combine(outputDir, safeName);
+	private static string BuildJiraContext(IEnumerable<JiraTicket> tickets)
+	{
+		var sb = new StringBuilder();
+		foreach (var t in tickets)
+		{
+			sb.AppendLine($"[{t.Key}] {t.Summary}");
+			sb.AppendLine(t.Description);
+			sb.AppendLine();
+		}
+		return sb.ToString();
+	}
 
-        if (!System.IO.File.Exists(fullPath))
-            return NotFound(new { message = $"File '{safeName}' not found." });
+	private static string BuildGitContext(GitRepositoryInfo repo)
+	{
+		var sb = new StringBuilder();
 
-        var bytes = System.IO.File.ReadAllBytes(fullPath);
-        return File(bytes, "application/pdf", safeName);
-    }
+		// ── Repository metadata ──
+		if (!string.IsNullOrWhiteSpace(repo.RepositoryUrl))
+			sb.AppendLine($"Repository URL: {repo.RepositoryUrl}");
 
-    private static string BuildDefaultFileName(DocumentationRequest request)
-    {
-        var parts = new List<string>();
+		if (!string.IsNullOrWhiteSpace(repo.RepositoryPath))
+			sb.AppendLine($"Repository Path: {repo.RepositoryPath}");
 
-        if (request.JiraTicketIds.Count > 0)
-            parts.Add(request.JiraTicketIds[0]);
+		if (!string.IsNullOrWhiteSpace(repo.CurrentBranch))
+			sb.AppendLine($"Current Branch: {repo.CurrentBranch}");
 
-        if (!string.IsNullOrWhiteSpace(request.GitRepositoryUrl))
-        {
-            var repoName = request.GitRepositoryUrl.TrimEnd('/').Split('/').LastOrDefault() ?? "repo";
-            parts.Add(repoName.Replace(".git", ""));
-        }
+		if (repo.Branches.Count > 0)
+			sb.AppendLine($"Branches: {string.Join(", ", repo.Branches)}");
 
-        parts.Add(request.DocumentationType.ToString());
-        parts.Add(DateTime.UtcNow.ToString("yyyyMMdd"));
+		if (repo.Contributors.Count > 0)
+			sb.AppendLine($"Contributors: {string.Join(", ", repo.Contributors)}");
 
-        return string.Join("_", parts);
-    }
+		if (!string.IsNullOrWhiteSpace(repo.TotalCommits))
+			sb.AppendLine($"Total Commits: {repo.TotalCommits}");
+
+		if (repo.Technologies.Count > 0)
+			sb.AppendLine($"Technologies: {string.Join(", ", repo.Technologies)}");
+
+		if (!string.IsNullOrWhiteSpace(repo.Description))
+		{
+			sb.AppendLine();
+			sb.AppendLine("Repository Description:");
+			sb.AppendLine(repo.Description);
+		}
+
+		sb.AppendLine();
+		sb.AppendLine(new string('-', 50));
+
+		// ── Recent commits (high signal for documentation) ──
+		if (repo.RecentCommits.Count > 0)
+		{
+			sb.AppendLine("Recent Commits:");
+			foreach (var commit in repo.RecentCommits.Take(10))
+			{
+				sb.AppendLine($"- {commit.Message} (by {commit.Author}, {commit.Date:yyyy-MM-dd})");
+			}
+
+			sb.AppendLine();
+			sb.AppendLine(new string('-', 50));
+		}
+
+		// ── Source files (core input for Groq) ──
+		if (repo.Files.Count == 0)
+		{
+			sb.AppendLine("No source files found.");
+			return sb.ToString();
+		}
+
+		foreach (var file in repo.Files)
+		{
+			sb.AppendLine($"File: {file.Path}");
+
+			if (!string.IsNullOrWhiteSpace(file.Content))
+				sb.AppendLine(file.Content);
+			else
+				sb.AppendLine("[File content not available]");
+
+			sb.AppendLine(new string('-', 50));
+		}
+
+		return sb.ToString();
+	}
 }
