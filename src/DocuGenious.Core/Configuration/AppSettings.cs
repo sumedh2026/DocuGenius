@@ -20,7 +20,15 @@ public class GitSettings
 {
     public string Username { get; set; } = string.Empty;
     public string PersonalAccessToken { get; set; } = string.Empty;
-    public string CloneDirectory { get; set; } = "./git-repos";
+
+    /// <summary>
+    /// Base directory for cloning remote Git repositories.
+    /// Leave empty (recommended) to use the system temp directory automatically —
+    /// this works on every environment including Azure App Service, Docker, and Linux.
+    /// Each clone is placed in a unique subdirectory and deleted after analysis.
+    /// Set an explicit path only if you need to inspect cloned files manually.
+    /// </summary>
+    public string CloneDirectory { get; set; } = string.Empty;
 }
 
 public class GroqSettings
