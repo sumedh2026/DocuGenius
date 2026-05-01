@@ -11,7 +11,7 @@ public class DocumentationController : ControllerBase
 {
     private readonly IJiraService _jiraService;
     private readonly IGitService _gitService;
-    private readonly IGroqService _groqService;
+    private readonly IGeminiService _geminiService;
     private readonly IPdfService _pdfService;
     private readonly JobStatusService _jobStatus;
     private readonly ILogger<DocumentationController> _logger;
@@ -19,14 +19,14 @@ public class DocumentationController : ControllerBase
     public DocumentationController(
         IJiraService jiraService,
         IGitService gitService,
-        IGroqService groqService,
+        IGeminiService geminiService,
         IPdfService pdfService,
         JobStatusService jobStatus,
         ILogger<DocumentationController> logger)
     {
         _jiraService = jiraService;
         _gitService  = gitService;
-        _groqService = groqService;
+        _geminiService = geminiService;
         _pdfService  = pdfService;
         _jobStatus   = jobStatus;
         _logger      = logger;
@@ -136,9 +136,9 @@ public class DocumentationController : ControllerBase
             Status($"🤖 Analysing with Gemini AI — generating {request.DocumentationType} (this may take a moment)…");
             AnalysisResult analysisResult = request.SourceType switch
             {
-                SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
-                SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
-                _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
+                SourceType.JiraOnly => await _geminiService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
+                SourceType.GitOnly  => await _geminiService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
+                _                   => await _geminiService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
             };
             Status("✅ AI analysis complete");
 

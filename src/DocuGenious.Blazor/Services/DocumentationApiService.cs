@@ -36,7 +36,7 @@ public class DocumentationApiService
 	{
 		try
 		{
-			var result = await _http.GetFromJsonAsync<ConnectionResult>("api/groq/validate");
+			var result = await _http.GetFromJsonAsync<ConnectionResult>("api/gemini/validate");
 			return result ?? new ConnectionResult { Connected = false, Message = "No response" };
 		}
 		catch (Exception ex)

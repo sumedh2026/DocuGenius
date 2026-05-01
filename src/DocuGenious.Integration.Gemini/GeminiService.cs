@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DocuGenious.Integration.Gemini;
 
-public class GeminiService : IGroqService
+public class GeminiService : IGeminiService
 {
     private readonly GeminiSettings _settings;
     private readonly ILogger<GeminiService> _logger;
@@ -35,7 +35,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // IGroqService implementation
+    // IGeminiService implementation
     // =========================================================================
 
     public async Task<bool> ValidateConnectionAsync()
@@ -298,7 +298,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // JSON parsing — identical pipeline to GroqService
+    // JSON parsing 
     // =========================================================================
 
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
@@ -441,7 +441,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // JSON extraction strategies (ported from GroqService)
+    // JSON extraction strategies
     // =========================================================================
 
     private static IEnumerable<string> ExtractJsonCandidates(string raw)
@@ -728,7 +728,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // Post-parse normalisation (ported from GroqService)
+    // Post-parse normalisation 
     // =========================================================================
 
     private static void NormalizeResult(AnalysisResult r, DocumentationType docType)
@@ -1002,14 +1002,14 @@ public class GeminiService : IGroqService
 
     /// <summary>
     /// Parses a seconds value from the delay embedded in the exception message.
-    /// Handles every format Gemini and Groq use:
+    /// Handles every format Gemini use:
     ///   • [retry after 4s]          — from retryDelay JSON field ("4s")
     ///   • [retry after 4.197s]      — fractional seconds from retryDelay
     ///   • [retry after 60s]         — from Retry-After header (with appended 's')
     ///   • [retry after 60]          — from Retry-After header (numeric only)
     ///   • Please retry in 4.197s.   — Gemini error message body
-    ///   • try again in 38.4s        — Groq error message body
-    ///   • try again in 1m2.5s       — Groq minutes+seconds format
+    ///   • try again in 38.4s        — Gemini error message body
+    ///   • try again in 1m2.5s       — Gemini minutes+seconds format
     /// Returns null when no recognisable pattern is found.
     /// </summary>
     private static double? ParseRetryAfterSeconds(string message)
@@ -1033,7 +1033,7 @@ public class GeminiService : IGroqService
                 System.Globalization.CultureInfo.InvariantCulture, out var geminiSec))
             return geminiSec;
 
-        // "try again in Xm Y.Ys" — Groq minutes+seconds
+        // "try again in Xm Y.Ys" — Gemini minutes+seconds
         var mMatch = Regex.Match(message,
             @"try again in (\d+)m(\d+(?:\.\d+)?)s", RegexOptions.IgnoreCase);
         if (mMatch.Success &&
@@ -1043,7 +1043,7 @@ public class GeminiService : IGroqService
                 System.Globalization.CultureInfo.InvariantCulture, out var secs))
             return mins * 60 + secs;
 
-        // "try again in X.Xs" — Groq seconds-only
+        // "try again in X.Xs" — Gemini seconds-only
         var sMatch = Regex.Match(message,
             @"try again in (\d+(?:\.\d+)?)s", RegexOptions.IgnoreCase);
         if (sMatch.Success &&
@@ -1056,7 +1056,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // Context builders (ported from GroqService)
+    // Context builders 
     // =========================================================================
 
     private static string BuildUserPrompt(
@@ -1152,7 +1152,7 @@ public class GeminiService : IGroqService
     }
 
     // =========================================================================
-    // Prompt building (ported from GroqService)
+    // Prompt building 
     // =========================================================================
 
     private static string GetFocusInstructions(DocumentationType docType) => docType switch
