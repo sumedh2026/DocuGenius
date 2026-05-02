@@ -85,16 +85,19 @@ public class JiraController : ControllerBase
                     ? ticket.Summary
                     : $"{ticket.Summary}  [{ticket.Status}]";
             }
-            catch (KeyNotFoundException)
+            catch (KeyNotFoundException ex)
             {
+                // JiraService already translates SDK JSON errors to plain English here
                 item.Exists  = false;
-                item.Message = $"Ticket '{ticketId}' not found in JIRA.";
+                item.Message = ex.Message;
             }
             catch (Exception ex)
             {
+                // Last-resort fallback: strip any raw JSON the SDK may still embed
                 item.Exists  = false;
-                item.Message = $"Error checking '{ticketId}': {ex.Message}";
-                _logger.LogWarning(ex, "Error validating ticket {TicketId}", ticketId);
+                item.Message = JiraControllerHelpers.ExtractReadableMessage(ex.Message)
+                    ?? $"Could not check ticket '{ticketId}'. Please try again.";
+                _logger.LogWarning(ex, "Unexpected error validating ticket {TicketId}", ticketId);
             }
             results.Add(item);
         }
@@ -125,4 +128,44 @@ public class JiraController : ControllerBase
 public class GetTicketsRequest
 {
     public List<string> TicketIds { get; set; } = [];
+}
+
+file static class JiraControllerHelpers
+{
+    /// <summary>
+    /// Tries to extract a human-readable sentence from an exception message that
+    /// may contain a raw JIRA JSON body (e.g. the Atlassian SDK error format).
+    /// Returns null when no JSON or no recognisable field is found.
+    /// </summary>
+    internal static string? ExtractReadableMessage(string exceptionMessage)
+    {
+        var jsonStart = exceptionMessage.IndexOf('{');
+        if (jsonStart < 0) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(exceptionMessage[jsonStart..]);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("errorMessages", out var arr) &&
+                arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var msgs = arr.EnumerateArray()
+                    .Select(e => e.GetString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+                if (msgs.Count > 0) return string.Join(" ", msgs);
+            }
+            foreach (var prop in new[] { "message", "detail", "error" })
+            {
+                if (root.TryGetProperty(prop, out var el) &&
+                    el.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var v = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
+                }
+            }
+        }
+        catch { /* not JSON */ }
+        return null;
+    }
 }

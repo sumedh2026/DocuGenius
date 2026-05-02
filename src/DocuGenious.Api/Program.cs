@@ -1,8 +1,8 @@
 using DocuGenious.Api.Services;
 using DocuGenious.Core.Configuration;
 using DocuGenious.Core.Interfaces;
+using DocuGenious.Integration.Gemini;
 using DocuGenious.Integration.Git;
-using DocuGenious.Integration.Groq;
 using DocuGenious.Integration.Jira;
 using DocuGenious.Integration.Pdf;
 
@@ -24,7 +24,8 @@ var localhostOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     "https://localhost:7002",
     "http://localhost:5002",
     "https://localhost:7001",
-    "http://localhost:5001"
+    "http://localhost:5001",
+    "https://docugeniousblazor20260429165200-eyfdh6h3gpckc9bw.canadacentral-01.azurewebsites.net"
 };
 
 // Additional origins from appsettings (e.g. production / staging URLs)
@@ -64,7 +65,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<JobStatusService>();
 builder.Services.AddSingleton<IJiraService, JiraService>();
 builder.Services.AddSingleton<IGitService, GitService>();
-builder.Services.AddSingleton<IGroqService, GroqService>();
+builder.Services.AddSingleton<IGeminiService, GeminiService>();
 builder.Services.AddSingleton<IPdfService, PdfService>();
 
 // ─── API + Swagger ────────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title       = "Docu-Genius API",
         Version     = "v1",
-        Description = "AI-Powered Documentation Generator API — backed by Groq / LLaMA"
+        Description = "AI-Powered Documentation Generator API — backed by Google Gemini AI"
     });
 });
 

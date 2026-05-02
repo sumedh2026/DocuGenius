@@ -75,10 +75,10 @@ public static class DocumentationTypes
 {
     public static readonly List<DropdownOption> Options =
     [
-        new("FullDocumentation",      "Full Documentation"),
-        new("UserGuide",              "User Guide  (non-technical)"),
+        // new("FullDocumentation",      "Full Documentation"),       // temporarily hidden
         new("TechnicalDocumentation", "Technical Documentation"),
-        new("ApiDocumentation",       "API Documentation"),
-        new("ArchitectureOverview",   "Architecture Overview"),
+        new("UserGuide",              "User Guide  (non-technical)"),
+        // new("ApiDocumentation",       "API Documentation"),        // temporarily hidden
+        // new("ArchitectureOverview",   "Architecture Overview"),     // temporarily hidden
     ];
 }

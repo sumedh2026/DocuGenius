@@ -247,24 +247,28 @@ public class GitService : IGitService
     public async Task<GitRepositoryInfo> CloneAndAnalyzeAsync(
         string repositoryUrl, string? branch = null, DocumentationRequest? request = null)
     {
-        var cloneDir = Path.GetFullPath(_settings.CloneDirectory);
-        Directory.CreateDirectory(cloneDir);
+        // Resolve the base clone directory.
+        // Priority:
+        //   1. Git:CloneDirectory from appsettings (if non-empty and writable)
+        //   2. Path.GetTempPath() — always writable on local dev, Azure App Service,
+        //      Azure Container Apps, Docker, and every other hosting environment.
+        var baseDir = ResolveCloneBaseDirectory();
 
-        var repoName = ExtractRepoName(repositoryUrl);
-        var localPath = Path.Combine(cloneDir, repoName);
+        // Use a unique subdirectory per request so concurrent calls never collide
+        // and we can safely delete it after analysis without affecting other jobs.
+        var repoName  = ExtractRepoName(repositoryUrl);
+        var uniqueId  = Guid.NewGuid().ToString("N")[..8];
+        var localPath = Path.Combine(baseDir, $"{repoName}_{uniqueId}");
 
-        if (Directory.Exists(localPath))
+        _logger.LogInformation("Cloning repository {Url} to {Path}...", repositoryUrl, localPath);
+        Directory.CreateDirectory(localPath);
+
+        try
         {
-            _logger.LogInformation("Repository already cloned at {Path}. Using existing copy.", localPath);
-        }
-        else
-        {
-            _logger.LogInformation("Cloning repository {Url} to {Path}...", repositoryUrl, localPath);
-
             var cloneOptions = new CloneOptions
             {
                 BranchName = branch,
-                IsBare = false
+                IsBare     = false
             };
 
             // Add credentials if PAT is configured (supports GitHub, GitLab, Azure DevOps)
@@ -273,17 +277,84 @@ public class GitService : IGitService
                 cloneOptions.FetchOptions.CredentialsProvider = (url, user, cred) =>
                     new UsernamePasswordCredentials
                     {
-                        // For GitHub/GitLab: username can be anything, password = PAT
-                        // For Azure DevOps: username = actual username, password = PAT
+                        // For GitHub/GitLab: username can be anything; password = PAT
+                        // For Azure DevOps: username = actual username; password = PAT
                         Username = string.IsNullOrWhiteSpace(_settings.Username) ? "git" : _settings.Username,
                         Password = _settings.PersonalAccessToken
                     };
             }
 
             await Task.Run(() => Repository.Clone(repositoryUrl, localPath, cloneOptions));
+
+            return await AnalyzeLocalRepositoryAsync(localPath, branch, request);
+        }
+        finally
+        {
+            // Always clean up the cloned directory after analysis.
+            // This prevents the temp/clone folder from accumulating GBs of repo data
+            // on hosted environments (Azure App Service, containers, etc.).
+            TryDeleteDirectory(localPath);
+        }
+    }
+
+    /// <summary>
+    /// Returns the directory to clone repositories into.
+    /// Uses <c>Git:CloneDirectory</c> from appsettings when it is non-empty and
+    /// the application can create it; otherwise falls back to <see cref="Path.GetTempPath"/>.
+    /// This ensures the code works on any hosting environment (Azure, Docker, Linux)
+    /// where a hard-coded local Windows path would not exist or would be read-only.
+    /// </summary>
+    private string ResolveCloneBaseDirectory()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.CloneDirectory))
+        {
+            try
+            {
+                var configured = Path.GetFullPath(_settings.CloneDirectory);
+                Directory.CreateDirectory(configured);
+                _logger.LogDebug("Using configured CloneDirectory: {Dir}", configured);
+                return configured;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    "Configured Git:CloneDirectory '{Dir}' is not usable ({Msg}). " +
+                    "Falling back to system temp directory.",
+                    _settings.CloneDirectory, ex.Message);
+            }
         }
 
-        return await AnalyzeLocalRepositoryAsync(localPath, branch, request);
+        var tempDir = Path.Combine(Path.GetTempPath(), "docugenious-repos");
+        Directory.CreateDirectory(tempDir);
+        _logger.LogDebug("Using temp CloneDirectory: {Dir}", tempDir);
+        return tempDir;
+    }
+
+    /// <summary>
+    /// Deletes a directory tree, suppressing all errors.
+    /// Cloned repositories may contain read-only files (e.g. inside .git),
+    /// so we force-reset attributes before deletion.
+    /// </summary>
+    private void TryDeleteDirectory(string path)
+    {
+        if (!Directory.Exists(path)) return;
+        try
+        {
+            // LibGit2Sharp marks some .git object files as read-only.
+            // Reset attributes recursively so Directory.Delete succeeds.
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                try { File.SetAttributes(file, FileAttributes.Normal); }
+                catch { /* ignore */ }
+            }
+            Directory.Delete(path, recursive: true);
+            _logger.LogDebug("Cleaned up cloned repository at {Path}", path);
+        }
+        catch (Exception ex)
+        {
+            // Cleanup failure is non-fatal — log and continue
+            _logger.LogWarning("Could not clean up clone directory {Path}: {Msg}", path, ex.Message);
+        }
     }
 
     public Task<GitRepositoryInfo> AnalyzeLocalRepositoryAsync(

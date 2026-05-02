@@ -24,8 +24,8 @@ catch { /* DevTunnel config not present — using appsettings.json */ }
 
 var apiBase = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:60735/";
 
-// Timeout must exceed the full server-side flow (JIRA fetch + Groq call + PDF generation).
-// Groq alone can take up to 2 minutes for large documents, so 3 minutes is the safe minimum.
+// Timeout must exceed the full server-side flow (JIRA fetch + Gemini AI call + PDF generation).
+// Gemini can take up to 2 minutes for large documents, so 3 minutes is the safe minimum.
 builder.Services.AddScoped(_ => new HttpClient
 {
     BaseAddress = new Uri(apiBase),

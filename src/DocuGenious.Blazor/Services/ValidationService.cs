@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using DocuGenious.Blazor.Models;
 
@@ -24,13 +25,22 @@ public partial class ValidationService
     [GeneratedRegex(@"^(?!\.)[^\s~^:?*\[\\]+(?<!\.)$")]
     private static partial Regex BranchNameRegex();
 
+    // Statuses that mean "User Guide ready"
+    private static readonly string[] UserGuideDoneStatuses =
+        ["done", "complete", "completed"];
+
+    // Statuses that indicate a ticket is already closed (warn for non-UserGuide types)
+    private static readonly string[] ClosedStatuses =
+        ["done", "closed", "resolved", "cancelled", "rejected", "complete", "completed"];
+
     public ValidationService(HttpClient http) => _http = http;
 
     // ── Public entry point ────────────────────────────────────────────────────
 
     /// <summary>
     /// Run all client-side and server-side validations.
-    /// Calls <paramref name="onRowUpdated"/> after each row changes so the UI can re-render.
+    /// Calls <paramref name="onRowUpdated"/> with the current row list after each
+    /// row changes so the UI can re-render with live feedback.
     /// Returns false if any hard failure was found (warnings are allowed through).
     /// </summary>
     public async Task<(List<ValidationRow> Rows, bool CanProceed)> ValidateAsync(
@@ -39,7 +49,8 @@ public partial class ValidationService
         string? repoUrl,
         string? branch,
         string? outputFileName,
-        Action onRowUpdated)
+        string docType,
+        Action<List<ValidationRow>> onRowUpdated)
     {
         var rows = new List<ValidationRow>();
         bool hasFailure = false;
@@ -55,8 +66,8 @@ public partial class ValidationService
         if (dupes.Any())
         {
             rows.Add(ValidationRow.Warn("Duplicate ticket IDs",
-                $"Removed duplicates: {string.Join(", ", dupes)}"));
-            onRowUpdated();
+                $"Removed duplicates: {string.Join(", ", dupes)}. Each ticket is checked once."));
+            onRowUpdated(rows);
         }
 
         var uniqueTickets = ticketIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -68,10 +79,10 @@ public partial class ValidationService
             {
                 if (!TicketFormatRegex().IsMatch(id.ToUpper()))
                 {
-                    rows.Add(ValidationRow.Fail($"Format: {id}",
-                        $"'{id}' is not a valid JIRA ticket ID. Expected format: PROJECT-123"));
+                    rows.Add(ValidationRow.Fail($"Invalid ticket format: {id}",
+                        $"'{id}' is not a valid JIRA ticket ID. Expected format: PROJECT-123 (e.g. SCRUM-42)"));
                     hasFailure = true;
-                    onRowUpdated();
+                    onRowUpdated(rows);
                 }
             }
         }
@@ -81,20 +92,22 @@ public partial class ValidationService
         {
             if (!GitUrlRegex().IsMatch(repoUrl))
             {
-                rows.Add(ValidationRow.Fail("Git URL format",
-                    "URL must start with https://, http://, git@, or git://"));
+                rows.Add(ValidationRow.Fail("Invalid repository URL",
+                    "The URL must start with https://, http://, git@, or git://. " +
+                    "Example: https://github.com/org/repo"));
                 hasFailure = true;
-                onRowUpdated();
+                onRowUpdated(rows);
             }
         }
 
         // Branch name format
         if (!string.IsNullOrWhiteSpace(branch) && !BranchNameRegex().IsMatch(branch))
         {
-            rows.Add(ValidationRow.Fail("Branch name format",
-                $"'{branch}' contains invalid characters for a git branch name."));
+            rows.Add(ValidationRow.Fail("Invalid branch name",
+                $"'{branch}' contains characters that are not allowed in a git branch name " +
+                "(spaces, ~, ^, :, ?, *, [, \\)."));
             hasFailure = true;
-            onRowUpdated();
+            onRowUpdated(rows);
         }
 
         // Output file name
@@ -102,16 +115,16 @@ public partial class ValidationService
         {
             if (InvalidFileNameRegex().IsMatch(outputFileName))
             {
-                rows.Add(ValidationRow.Fail("Output file name",
-                    @"File name contains invalid characters: < > : "" / \ | ? *"));
+                rows.Add(ValidationRow.Fail("Invalid output file name",
+                    @"The file name contains characters that are not allowed on Windows: < > : "" / \ | ? *"));
                 hasFailure = true;
-                onRowUpdated();
+                onRowUpdated(rows);
             }
             else if (outputFileName.Length > 200)
             {
-                rows.Add(ValidationRow.Warn("Output file name",
-                    "File name is very long (> 200 chars). It will be truncated if needed."));
-                onRowUpdated();
+                rows.Add(ValidationRow.Warn("Output file name is very long",
+                    "The name is over 200 characters and may be truncated by the operating system."));
+                onRowUpdated(rows);
             }
         }
 
@@ -121,14 +134,16 @@ public partial class ValidationService
 
         // ── 2. Server-side checks (async, one by one so UI updates live) ──────
 
-        // JIRA tickets existence
+        // JIRA tickets existence + status
         if (sourceType is "JiraOnly" or "Both" && uniqueTickets.Any())
         {
+            bool isUserGuide = docType.Equals("UserGuide", StringComparison.OrdinalIgnoreCase);
+
             foreach (var id in uniqueTickets)
             {
                 var row = ValidationRow.Checking(id);
                 rows.Add(row);
-                onRowUpdated();
+                onRowUpdated(rows);
 
                 try
                 {
@@ -136,31 +151,31 @@ public partial class ValidationService
                         "api/jira/validate-tickets",
                         new { ticketIds = new[] { id } });
 
-                    // Read raw body first so we can show it on any error
                     var rawBody = await response.Content.ReadAsStringAsync();
 
                     if (!response.IsSuccessStatusCode)
                     {
                         row.Status  = ValidationStatus.Fail;
-                        row.Message = $"API error {(int)response.StatusCode}: {rawBody}";
+                        row.Message = TryExtractMessage(rawBody)
+                            ?? $"The server returned an error ({(int)response.StatusCode}) while checking this ticket.";
                         hasFailure  = true;
-                        onRowUpdated();
+                        onRowUpdated(rows);
                         continue;
                     }
 
                     List<TicketValidationDto>? items = null;
                     try
                     {
-                        items = System.Text.Json.JsonSerializer.Deserialize<List<TicketValidationDto>>(
+                        items = JsonSerializer.Deserialize<List<TicketValidationDto>>(
                             rawBody,
-                            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     }
-                    catch (Exception jsonEx)
+                    catch
                     {
                         row.Status  = ValidationStatus.Fail;
-                        row.Message = $"Unexpected response format: {jsonEx.Message}. Body: {rawBody[..Math.Min(200, rawBody.Length)]}";
+                        row.Message = "The server sent an unexpected response. Please try again.";
                         hasFailure  = true;
-                        onRowUpdated();
+                        onRowUpdated(rows);
                         continue;
                     }
 
@@ -169,41 +184,64 @@ public partial class ValidationService
                     if (item is null)
                     {
                         row.Status  = ValidationStatus.Fail;
-                        row.Message = "No response from server.";
+                        row.Message = "No response received from the server. Please try again.";
                         hasFailure  = true;
                     }
                     else if (!item.Exists)
                     {
                         row.Status  = ValidationStatus.Fail;
+                        // item.Message is already set by the API to a friendly string
                         row.Message = item.Message;
                         hasFailure  = true;
                     }
+                    else if (isUserGuide)
+                    {
+                        // User Guide: ALL tickets must be Done or Complete
+                        bool isDone = UserGuideDoneStatuses.Any(s =>
+                            item.Status?.Contains(s, StringComparison.OrdinalIgnoreCase) == true);
+
+                        if (isDone)
+                        {
+                            row.Status  = ValidationStatus.Pass;
+                            row.Message = $"{item.Summary}  [{item.Status}] — ready for User Guide";
+                        }
+                        else
+                        {
+                            row.Status  = ValidationStatus.Fail;
+                            row.Message =
+                                $"This ticket has status '{item.Status ?? "unknown"}', but User Guide " +
+                                "can only be generated for tickets with status 'Done' or 'Complete'. " +
+                                "Please finish the work on this ticket first.";
+                            hasFailure = true;
+                        }
+                    }
                     else
                     {
-                        var closedStatuses = new[] { "done", "closed", "resolved", "cancelled", "rejected" };
-                        bool isClosed = closedStatuses.Any(s =>
-                            item.Status.Contains(s, StringComparison.OrdinalIgnoreCase));
+                        // Other doc types: warn if already closed, pass otherwise
+                        bool isClosed = ClosedStatuses.Any(s =>
+                            item.Status?.Contains(s, StringComparison.OrdinalIgnoreCase) == true);
 
                         row.Status  = isClosed ? ValidationStatus.Warn : ValidationStatus.Pass;
                         row.Message = isClosed
-                            ? $"{item.Summary}  [{item.Status}] — ticket is already closed"
+                            ? $"{item.Summary}  [{item.Status}] — this ticket is already closed"
                             : item.Message;
                     }
                 }
                 catch (HttpRequestException httpEx)
                 {
                     row.Status  = ValidationStatus.Fail;
-                    row.Message = $"Network error reaching API: {httpEx.Message}";
+                    row.Message = $"Could not reach the server to validate this ticket. " +
+                                  $"Check your network connection. ({httpEx.Message})";
                     hasFailure  = true;
                 }
                 catch (Exception ex)
                 {
                     row.Status  = ValidationStatus.Fail;
-                    row.Message = $"Unexpected error: {ex.Message}";
+                    row.Message = $"An unexpected error occurred while checking this ticket: {ex.Message}";
                     hasFailure  = true;
                 }
 
-                onRowUpdated();
+                onRowUpdated(rows);
             }
         }
 
@@ -213,7 +251,7 @@ public partial class ValidationService
             var repoLabel = repoUrl.TrimEnd('/').Split('/').Last().Replace(".git", "");
             var row = ValidationRow.Checking(repoLabel);
             rows.Add(row);
-            onRowUpdated();
+            onRowUpdated(rows);
 
             try
             {
@@ -227,32 +265,33 @@ public partial class ValidationService
                 if (!response.IsSuccessStatusCode)
                 {
                     row.Status  = ValidationStatus.Fail;
-                    row.Message = $"API error {(int)response.StatusCode}: {rawBody}";
+                    row.Message = TryExtractMessage(rawBody)
+                        ?? $"The server returned an error ({(int)response.StatusCode}) while checking the repository.";
                     hasFailure  = true;
-                    onRowUpdated();
+                    onRowUpdated(rows);
                     return (rows, false);
                 }
 
                 RepoValidationDto? dto = null;
                 try
                 {
-                    dto = System.Text.Json.JsonSerializer.Deserialize<RepoValidationDto>(
+                    dto = JsonSerializer.Deserialize<RepoValidationDto>(
                         rawBody,
-                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 }
-                catch (Exception jsonEx)
+                catch
                 {
                     row.Status  = ValidationStatus.Fail;
-                    row.Message = $"Unexpected response format: {jsonEx.Message}";
+                    row.Message = "The server sent an unexpected response while checking the repository. Please try again.";
                     hasFailure  = true;
-                    onRowUpdated();
+                    onRowUpdated(rows);
                     return (rows, false);
                 }
 
                 if (dto is null || !dto.Accessible)
                 {
                     row.Status  = ValidationStatus.Fail;
-                    row.Message = dto?.Message ?? "Repository is not accessible.";
+                    row.Message = dto?.Message ?? "The repository could not be accessed. Check the URL and that you have read permission.";
                     hasFailure  = true;
                 }
                 else if (!dto.BranchExists)
@@ -270,19 +309,48 @@ public partial class ValidationService
             catch (HttpRequestException httpEx)
             {
                 row.Status  = ValidationStatus.Fail;
-                row.Message = $"Network error reaching API: {httpEx.Message}";
+                row.Message = $"Could not reach the server to check the repository. " +
+                              $"Check your network connection. ({httpEx.Message})";
                 hasFailure  = true;
             }
             catch (Exception ex)
             {
                 row.Status  = ValidationStatus.Fail;
-                row.Message = $"Unexpected error: {ex.Message}";
+                row.Message = $"An unexpected error occurred while checking the repository: {ex.Message}";
                 hasFailure  = true;
             }
 
-            onRowUpdated();
+            onRowUpdated(rows);
         }
 
         return (rows, !hasFailure);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tries to extract a human-readable message from a JSON error body.
+    /// Checks "message", "detail", "title", and "error" properties in that order.
+    /// Returns null if the body is not JSON or contains none of these fields.
+    /// </summary>
+    private static string? TryExtractMessage(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            foreach (var prop in new[] { "message", "detail", "title", "error" })
+            {
+                if (root.TryGetProperty(prop, out var el) &&
+                    el.ValueKind == JsonValueKind.String)
+                {
+                    var val = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(val)) return val;
+                }
+            }
+        }
+        catch { /* not JSON or unexpected shape — return null */ }
+        return null;
     }
 }

@@ -71,15 +71,15 @@ public class CliHandler
         AnsiConsole.MarkupLine("[grey]Validating service connections...[/]");
 
         await AnsiConsole.Status()
-            .StartAsync("Connecting to Groq...", async ctx =>
+            .StartAsync("Connecting to Gemini AI...", async ctx =>
             {
                 ctx.Spinner(Spinner.Known.Dots);
                 try
                 {
                     var ok = await _groqService.ValidateConnectionAsync();
                     AnsiConsole.MarkupLine(ok
-                        ? "  [green]✓[/] Groq connection OK"
-                        : "  [yellow]⚠[/] Groq connection could not be verified — check your API key");
+                        ? "  [green]✓[/] Gemini AI connection OK"
+                        : "  [yellow]⚠[/] Gemini AI connection could not be verified — check your API key");
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -291,8 +291,8 @@ public class CliHandler
                         gitTask.Value = 1;
                     }
 
-                    // Step 3 — Groq analysis
-                    var aiTask = ctx.AddTask("[blue]Analysing with Groq[/]", maxValue: 1);
+                    // Step 3 — Gemini AI analysis
+                    var aiTask = ctx.AddTask("[blue]Analysing with Gemini AI[/]", maxValue: 1);
 
                     analysisResult = request.SourceType switch
                     {

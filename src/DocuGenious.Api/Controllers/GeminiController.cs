@@ -1,4 +1,3 @@
-/*
 using DocuGenious.Core.Interfaces;
 using DocuGenious.Core.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -6,15 +5,15 @@ using Microsoft.AspNetCore.Mvc;
 namespace DocuGenious.Api.Controllers;
 
 [ApiController]
-[Route("api/groq")]
-public class GroqController : ControllerBase
+[Route("api/gemini")]
+public class GeminiController : ControllerBase
 {
-    private readonly IGroqService _groqService;
-    private readonly ILogger<GroqController> _logger;
+    private readonly IGeminiService _geminiService;
+    private readonly ILogger<GeminiController> _logger;
 
-    public GroqController(IGroqService groqService, ILogger<GroqController> logger)
+    public GeminiController(IGeminiService geminiService, ILogger<GeminiController> logger)
     {
-        _groqService = groqService;
+        _geminiService = geminiService;
         _logger = logger;
     }
 
@@ -27,7 +26,7 @@ public class GroqController : ControllerBase
     {
         try
         {
-            var connected = await _groqService.ValidateConnectionAsync();
+            var connected = await _geminiService.ValidateConnectionAsync();
             return Ok(new { connected });
         }
         catch (Exception ex)
@@ -51,7 +50,7 @@ public class GroqController : ControllerBase
 
         try
         {
-            var result = await _groqService.AnalyzeJiraTicketsAsync(request.Tickets, request.DocumentationType);
+            var result = await _geminiService.AnalyzeJiraTicketsAsync(request.Tickets, request.DocumentationType);
             return Ok(result);
         }
         catch (Exception ex)
@@ -75,7 +74,7 @@ public class GroqController : ControllerBase
 
         try
         {
-            var result = await _groqService.AnalyzeGitRepositoryAsync(request.RepositoryInfo, request.DocumentationType);
+            var result = await _geminiService.AnalyzeGitRepositoryAsync(request.RepositoryInfo, request.DocumentationType);
             return Ok(result);
         }
         catch (Exception ex)
@@ -101,7 +100,7 @@ public class GroqController : ControllerBase
 
         try
         {
-            var result = await _groqService.AnalyzeCombinedAsync(
+            var result = await _geminiService.AnalyzeCombinedAsync(
                 request.Tickets, request.RepositoryInfo, request.DocumentationType);
             return Ok(result);
         }
@@ -131,4 +130,3 @@ public class AnalyseCombinedRequest
     public GitRepositoryInfo? RepositoryInfo { get; set; }
     public DocumentationType DocumentationType { get; set; } = DocumentationType.FullDocumentation;
 }
-*/

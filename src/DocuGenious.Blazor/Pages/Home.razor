@@ -94,46 +94,42 @@
         <label class="dg-label">File Name</label>
         <input class="dg-input" @bind="_outputFileName" />
     </div>
+    <div class="mx-2"
+         style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+    
+        <button class="dg-btn-secondary"
+                @onclick="clear">
+            Clear
+        </button>
 
-    <div style="display:flex; justify-content:flex-end;">
         <button class="dg-btn-primary"
                 @onclick="StartValidation"
                 disabled="@(!CanSubmit)">
             ✨ Generate
         </button>
+
     </div>
 
-    <!-- FILE HISTORY GRID -->
+    <!-- FILE HISTORY LIST -->
     @if (_files.Any())
     {
         <div style="margin-top:25px">
             <p class="dg-section-title">Generated Files</p>
 
-            <table class="dg-table">
-                <thead>
-                    <tr>
-                        <th>File Name</th>
-                        <th>Created On</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @foreach (var f in _files)
-                    {
-                        <tr>
-                            <td>@f.FileName</td>
-                            <td>@f.CreatedOn.ToString("dd-MMM-yyyy HH:mm")</td>
-                            <td>
-                                <button class="dg-btn-download"
-                                        @onclick="() => DownloadPdf(f.FileName)">
-                                    Download
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="dg-files-list">
+                @foreach (var f in _files)
+                {
+                    <div class="dg-file-row">
+                        <span class="dg-file-icon">📄</span>
+                        <span class="dg-file-name" title="@f.FileName">@f.FileName</span>
+                        <span class="dg-file-date">@f.CreatedOn.ToString("dd MMM yyyy, HH:mm")</span>
+                        <button class="dg-btn-download dg-btn-download-sm"
+                                @onclick="() => DownloadPdf(f.FileName)">
+                            ⬇ Download
+                        </button>
+                    </div>
+                }
+            </div>
         </div>
     }
 
@@ -145,12 +141,55 @@
     <div class="dg-modal-overlay">
         <div class="dg-modal">
 
+            @if (_state == UiState.Validating)
+            {
+                <p class="dg-modal-heading">
+                    @(_validationRunning ? "🔍 Checking inputs…" : "⚠️ Some checks failed")
+                </p>
+
+                <div class="dg-validation-list" style="text-align:left; margin-top:8px;">
+                    @foreach (var row in _validationRows)
+                    {
+                        <div class="dg-validation-row @GetStatusClass(row.Status)">
+                            <span class="dg-vicon">@GetStatusIcon(row.Status)</span>
+                            <div class="dg-vtext">
+                                <span class="dg-vlabel">@row.Label</span>
+                                @if (!string.IsNullOrWhiteSpace(row.Message))
+                                {
+                                    <span class="dg-vmsg">@row.Message</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_validationRunning)
+                    {
+                        <div class="dg-validation-row dg-vstatus-checking">
+                            <span class="dg-vicon">⏳</span>
+                            <div class="dg-vtext">
+                                <span class="dg-vlabel">Validating…</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (!_validationRunning)
+                {
+                    <button class="dg-btn-ghost" style="margin-top:16px;" @onclick="CloseDialog">
+                        ← Back to form
+                    </button>
+                }
+            }
+
             @if (_state == UiState.Generating)
             {
                 <div class="dg-progress">
                     <div class="dg-spinner"></div>
                     <p class="dg-status-text">@_statusMessage</p>
                 </div>
+
+                <button class="dg-btn-ghost" @onclick="CloseDialog">
+                    Hide
+                </button>
             }
 
             @if (_state == UiState.Success)
@@ -199,8 +238,17 @@
         background: white;
         padding: 25px;
         border-radius: 12px;
-        min-width: 320px;
+        min-width: 340px;
+        max-width: 480px;
+        width: 90vw;
         text-align: center;
+    }
+
+    .dg-modal-heading {
+        font-weight: 700;
+        font-size: 1rem;
+        color: #374151;
+        margin-bottom: 4px;
     }
 
     .dg-status-text {
@@ -211,30 +259,73 @@
         transition: opacity 0.3s ease;
     }
 
-    .dg-table {
-        width: 100%;
-        border-collapse: collapse;
+    .dg-files-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
     }
 
-        .dg-table th, .dg-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
+    .dg-file-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+
+    .dg-file-icon {
+        flex-shrink: 0;
+        font-size: 1.1rem;
+    }
+
+    .dg-file-name {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .dg-file-date {
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        color: #6b7280;
+        white-space: nowrap;
+    }
+
+    /* Compact download button used inside the file-history rows.
+       Overrides the full-width / large-padding defaults from app.css. */
+    .dg-btn-download-sm {
+        width: auto;
+        flex-shrink: 0;
+        padding: 6px 14px;
+        font-size: 0.82rem;
+        margin-top: 0;
+    }
 </style>
 
 @code {
 
-    private enum UiState { Form, Generating, Success, Error }
+    private enum UiState { Form, Validating, Generating, Success, Error }
     private UiState _state = UiState.Form;
 
     private bool _showDialog = false;
+
+    // ─── Validation ───────────────────────────────────────────────────────────────
+    private List<ValidationRow> _validationRows   = new();
+    private bool                _validationRunning = false;
 
     // ─── Live status ──────────────────────────────────────────────────────────────
     private string _statusMessage = "⏳ Starting…";
     private CancellationTokenSource? _pollingCts;
 
     private string _sourceType = "";
-    private string _docType = "FullDocumentation";
+    private string _docType = "TechnicalDocumentation"; // default selection
     private string _repoUrl = "";
     private string _branch = "";
     private string _additionalContext = "";
@@ -265,9 +356,47 @@
         if (!string.IsNullOrWhiteSpace(_ticketInput))
             AddTicket();
 
-        await Generate();
-    }
+        // ── Open the dialog in Validating state for live feedback ─────────────
+        _showDialog        = true;
+        _state             = UiState.Validating;
+        _validationRunning = true;
+        _validationRows    = new List<ValidationRow>();
 
+        var (rows, canProceed) = await Validator.ValidateAsync(
+            _sourceType,
+            _ticketIds,
+            ShowGit ? _repoUrl : null,
+            _branch,
+            _outputFileName,
+            _docType,
+            updatedRows =>
+            {
+                _validationRows = updatedRows;
+                StateHasChanged();
+            });
+
+        _validationRunning = false;
+        _validationRows    = rows;
+
+        // If the user already closed the dialog, do nothing
+        if (!_showDialog) return;
+
+        if (canProceed)
+            await Generate();
+        // else: stay in Validating state — user sees the failure rows + Close button
+    }
+    private void clear()
+    {
+        _sourceType = "";
+        _ticketInput = "";
+        _repoUrl = "";
+        _branch = "";
+        _docType = "TechnicalDocumentation";
+        _additionalContext = "";
+        _outputFileName = "";
+        _ticketIds = [];
+		StateHasChanged();
+    }
     private async Task Generate()
     {
         _showDialog      = true;
@@ -302,8 +431,6 @@
 
         if (_result.Success)
         {
-            _state = UiState.Success;
-
             var file = new FileRecord
             {
                 FileName  = _result.FileName,
@@ -312,11 +439,21 @@
 
             _files.Insert(0, file);
             await Storage.SaveFilesAsync(_files);
+
+            // Only pop the success dialog if the user hasn't already hidden it.
+            // If they clicked "Hide" while it was generating, the file now
+            // silently appears in the list below.
+            if (_showDialog)
+                _state = UiState.Success;
+            else
+                _state = UiState.Form;
         }
         else
         {
             _state        = UiState.Error;
             _errorMessage = _result.Error ?? "Error occurred";
+            // Always re-show the dialog for errors so the user sees what went wrong
+            _showDialog   = true;
         }
     }
 
@@ -346,19 +483,27 @@
 
     private void CloseDialog()
     {
-        // Clear the form only after a successful generation so the user can
-        // start fresh. On error, keep the fields so they can fix and retry.
-        if (_state == UiState.Success)
+        // Clear on success (fresh start) and on validation failure (back to form).
+        // On error we keep the fields so the user can fix inputs and retry.
+        if (_state == UiState.Success || _state == UiState.Validating)
             ResetForm();
 
         _showDialog = false;
-        _state = UiState.Form;
+
+        // During generation: leave state as Generating so Generate() can still
+        // resolve correctly — success silently adds to the list, error re-opens.
+        // During Validating/Fail: go back to Form so the user can fix inputs.
+        if (_state != UiState.Generating)
+        {
+            _state             = UiState.Form;
+            _validationRunning = false;
+        }
     }
 
     private void ResetForm()
     {
         _sourceType        = "";
-        _docType           = "FullDocumentation";
+        _docType           = "TechnicalDocumentation";
         _repoUrl           = "";
         _branch            = "";
         _additionalContext = "";
@@ -368,6 +513,8 @@
         _result            = null;
         _errorMessage      = "";
         _statusMessage     = "⏳ Starting…";
+        _validationRows    = new();
+        _validationRunning = false;
 
         // Cancel any in-flight polling (shouldn't happen, but defensive)
         _pollingCts?.Cancel();
@@ -406,4 +553,24 @@
     private async Task FocusTagInput()
         => await JS.InvokeVoidAsync("eval",
             "document.getElementById('tag-input')?.focus()");
+
+    // ─── Validation row display helpers ──────────────────────────────────────────
+
+    private static string GetStatusClass(ValidationStatus status) => status switch
+    {
+        ValidationStatus.Checking => "dg-vstatus-checking",
+        ValidationStatus.Pass     => "dg-vstatus-pass",
+        ValidationStatus.Warn     => "dg-vstatus-warn",
+        ValidationStatus.Fail     => "dg-vstatus-fail",
+        _                         => ""
+    };
+
+    private static string GetStatusIcon(ValidationStatus status) => status switch
+    {
+        ValidationStatus.Checking => "⏳",
+        ValidationStatus.Pass     => "✅",
+        ValidationStatus.Warn     => "⚠️",
+        ValidationStatus.Fail     => "❌",
+        _                         => "•"
+    };
 }

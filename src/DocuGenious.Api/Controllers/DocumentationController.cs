@@ -11,7 +11,7 @@ public class DocumentationController : ControllerBase
 {
     private readonly IJiraService _jiraService;
     private readonly IGitService _gitService;
-    private readonly IGroqService _groqService;
+    private readonly IGeminiService _geminiService;
     private readonly IPdfService _pdfService;
     private readonly JobStatusService _jobStatus;
     private readonly ILogger<DocumentationController> _logger;
@@ -19,21 +19,21 @@ public class DocumentationController : ControllerBase
     public DocumentationController(
         IJiraService jiraService,
         IGitService gitService,
-        IGroqService groqService,
+        IGeminiService geminiService,
         IPdfService pdfService,
         JobStatusService jobStatus,
         ILogger<DocumentationController> logger)
     {
         _jiraService = jiraService;
         _gitService  = gitService;
-        _groqService = groqService;
+        _geminiService = geminiService;
         _pdfService  = pdfService;
         _jobStatus   = jobStatus;
         _logger      = logger;
     }
 
     /// <summary>
-    /// All-in-one endpoint: fetches JIRA/Git data, analyses with Groq, generates PDF, returns file path.
+    /// All-in-one endpoint: fetches JIRA/Git data, analyses with Gemini AI, generates PDF, returns file path.
     /// </summary>
     [HttpPost("generate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -82,7 +82,7 @@ public class DocumentationController : ControllerBase
                 tickets = await _jiraService.GetTicketsAsync(request.JiraTicketIds);
 
                 // Guard: if every ticket failed the service throws, but defend here too so
-                // we never send empty source data to Groq (which causes hallucinated content).
+                // we never send empty source data to Gemini (which causes hallucinated content).
                 if (tickets.Count == 0)
                     return BadRequest(new
                     {
@@ -93,9 +93,31 @@ public class DocumentationController : ControllerBase
 
                 Status($"✅ Fetched {tickets.Count} JIRA ticket{(tickets.Count == 1 ? "" : "s")} successfully");
             }
+            // User Guide requires every ticket to be Done or Complete
+            if (request.DocumentationType == DocumentationType.UserGuide && tickets != null && tickets.Count > 0)
+            {
+                var doneStatuses = new[] { "done", "complete", "completed" };
+                var notDoneTickets = tickets
+                    .Where(t => !doneStatuses.Any(s =>
+                        t.Status?.Contains(s, StringComparison.OrdinalIgnoreCase) == true))
+                    .ToList();
 
-            // Step 2: Fetch Git repository
-            if (request.SourceType is SourceType.GitOnly or SourceType.Both)
+                if (notDoneTickets.Count > 0)
+                {
+                    var details = string.Join(", ", notDoneTickets.Select(t =>
+                        $"{t.Key} (status: {(string.IsNullOrWhiteSpace(t.Status) ? "unknown" : t.Status)})"));
+
+                    return BadRequest(new
+                    {
+                        message =
+                            "User Guide can only be generated for completed tickets. " +
+                            $"The following ticket(s) are not done yet: {details}. " +
+                            "Please make sure all tickets have status 'Done' or 'Complete' before generating a User Guide."
+                    });
+                }
+            }
+			// Step 2: Fetch Git repository
+			if (request.SourceType is SourceType.GitOnly or SourceType.Both)
             {
                 if (!string.IsNullOrWhiteSpace(request.GitRepositoryUrl))
                 {
@@ -110,13 +132,13 @@ public class DocumentationController : ControllerBase
                 Status("✅ Repository analysed successfully");
             }
 
-            // Step 3: Analyse with Groq
-            Status($"🤖 Analysing with Groq AI — generating {request.DocumentationType} (this may take a minute)…");
+            // Step 3: Analyse with Gemini AI
+            Status($"🤖 Analysing with Gemini AI — generating {request.DocumentationType} (this may take a moment)…");
             AnalysisResult analysisResult = request.SourceType switch
             {
-                SourceType.JiraOnly => await _groqService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
-                SourceType.GitOnly  => await _groqService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
-                _                   => await _groqService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
+                SourceType.JiraOnly => await _geminiService.AnalyzeJiraTicketsAsync(tickets!, request.DocumentationType, request.AdditionalContext),
+                SourceType.GitOnly  => await _geminiService.AnalyzeGitRepositoryAsync(repoInfo!, request.DocumentationType, request.AdditionalContext),
+                _                   => await _geminiService.AnalyzeCombinedAsync(tickets!, repoInfo!, request.DocumentationType, request.AdditionalContext)
             };
             Status("✅ AI analysis complete");
 
