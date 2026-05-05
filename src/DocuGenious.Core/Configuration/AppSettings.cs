@@ -88,6 +88,56 @@ public class GeminiSettings
 
     /// <summary>Gemini REST API base URL.</summary>
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta";
+
+    /// <summary>
+    /// Controls how much source data is sent to Gemini per request.
+    /// Increase limits for richer AI context (more tokens, higher cost, longer response time).
+    /// Decrease limits to reduce token usage and cost.
+    /// All values are in characters (≈ tokens × 4).
+    /// </summary>
+    public GeminiTruncationSettings Truncation { get; set; } = new();
+}
+
+public class GeminiTruncationSettings
+{
+    /// <summary>
+    /// Maximum characters sent for a single JIRA ticket description.
+    /// Default: 2000 chars (~500 tokens). Increase up to ~8000 for very detailed tickets.
+    /// </summary>
+    public int JiraDescriptionMaxChars { get; set; } = 2000;
+
+    /// <summary>
+    /// Maximum characters per acceptance-criteria item.
+    /// Default: 300 chars. Rarely needs changing.
+    /// </summary>
+    public int JiraAcceptanceCriteriaMaxChars { get; set; } = 300;
+
+    /// <summary>
+    /// Maximum characters per JIRA comment body.
+    /// Default: 300 chars. Increase if comments contain important technical detail.
+    /// </summary>
+    public int JiraCommentMaxChars { get; set; } = 300;
+
+    /// <summary>
+    /// Maximum characters per Git commit message.
+    /// Default: 200 chars. Commit messages are rarely longer.
+    /// </summary>
+    public int GitCommitMessageMaxChars { get; set; } = 200;
+
+    /// <summary>
+    /// Maximum characters of source-file content sent per file.
+    /// Default: 2000 chars (~500 tokens). The most impactful setting for code analysis.
+    /// Increase to 4000–8000 for deeper per-file understanding on Tier 1.
+    /// Note: total prompt is still capped by PromptMaxChars below.
+    /// </summary>
+    public int GitFileContentMaxChars { get; set; } = 2000;
+
+    /// <summary>
+    /// Hard ceiling on the entire assembled prompt (system + user + all source data).
+    /// Default: 80000 chars (~20000 tokens). Gemini 2.5 Flash Tier 1 supports up to
+    /// ~4 000 000 tokens/min, so this can safely be raised to 200000+ for large repos.
+    /// </summary>
+    public int PromptMaxChars { get; set; } = 80000;
 }
 
 public class OutputSettings

@@ -1073,41 +1073,42 @@ public class GeminiService : IGeminiService
                "Output JSON:\n" + GetJsonSchema(docType);
     }
 
-    private static string BuildJiraContext(List<JiraTicket> tickets)
+    private string BuildJiraContext(List<JiraTicket> tickets)
     {
+        var t = _settings.Truncation;
         var sb = new StringBuilder();
 
-        foreach (var t in tickets)
+        foreach (var ticket in tickets)
         {
-            sb.AppendLine($"Ticket: {t.Key} [{t.IssueType}] — {t.Summary}");
-            sb.AppendLine($"Status: {t.Status} | Priority: {t.Priority}");
-            sb.AppendLine($"Project: {t.ProjectName ?? t.ProjectKey}");
+            sb.AppendLine($"Ticket: {ticket.Key} [{ticket.IssueType}] — {ticket.Summary}");
+            sb.AppendLine($"Status: {ticket.Status} | Priority: {ticket.Priority}");
+            sb.AppendLine($"Project: {ticket.ProjectName ?? ticket.ProjectKey}");
 
-            if (!string.IsNullOrWhiteSpace(t.Description))
+            if (!string.IsNullOrWhiteSpace(ticket.Description))
             {
                 sb.AppendLine("Description:");
-                sb.AppendLine(Truncate(t.Description, 2000));
+                sb.AppendLine(Truncate(ticket.Description, t.JiraDescriptionMaxChars));
             }
 
-            if (t.AcceptanceCriteria.Count > 0)
+            if (ticket.AcceptanceCriteria.Count > 0)
             {
                 sb.AppendLine("Acceptance Criteria:");
-                foreach (var ac in t.AcceptanceCriteria.Take(10))
-                    sb.AppendLine($"  - {Truncate(ac, 300)}");
+                foreach (var ac in ticket.AcceptanceCriteria.Take(10))
+                    sb.AppendLine($"  - {Truncate(ac, t.JiraAcceptanceCriteriaMaxChars)}");
             }
 
-            if (t.SubTasks.Count > 0)
+            if (ticket.SubTasks.Count > 0)
             {
                 sb.AppendLine("Sub-tasks:");
-                foreach (var st in t.SubTasks.Take(10))
+                foreach (var st in ticket.SubTasks.Take(10))
                     sb.AppendLine($"  - {st.Key}: {st.Summary}");
             }
 
-            if (t.Comments.Count > 0)
+            if (ticket.Comments.Count > 0)
             {
                 sb.AppendLine("Comments:");
-                foreach (var c in t.Comments.Take(5))
-                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, 300)}");
+                foreach (var c in ticket.Comments.Take(5))
+                    sb.AppendLine($"  [{c.Author}]: {Truncate(c.Body, t.JiraCommentMaxChars)}");
             }
 
             sb.AppendLine();
@@ -1116,8 +1117,9 @@ public class GeminiService : IGeminiService
         return sb.ToString();
     }
 
-    private static string BuildGitContext(GitRepositoryInfo repo)
+    private string BuildGitContext(GitRepositoryInfo repo)
     {
+        var t = _settings.Truncation;
         var sb = new StringBuilder();
 
         sb.AppendLine($"Repository: {repo.RepositoryUrl ?? repo.RepositoryPath}");
@@ -1135,7 +1137,7 @@ public class GeminiService : IGeminiService
         {
             sb.AppendLine("\nRecent Commits:");
             foreach (var c in repo.RecentCommits.Take(20))
-                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {Truncate(c.Message, 200)}");
+                sb.AppendLine($"  {c.Date:yyyy-MM-dd} {c.Author}: {Truncate(c.Message, t.GitCommitMessageMaxChars)}");
         }
 
         if (repo.Files.Count > 0)
@@ -1144,7 +1146,7 @@ public class GeminiService : IGeminiService
             foreach (var f in repo.Files.Where(x => x.Content != null).Take(20))
             {
                 sb.AppendLine($"\n--- {f.Path} ---");
-                sb.AppendLine(Truncate(f.Content!, 2000));
+                sb.AppendLine(Truncate(f.Content!, t.GitFileContentMaxChars));
             }
         }
 
@@ -1211,8 +1213,14 @@ public class GeminiService : IGeminiService
     private static string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "... [truncated]";
 
-    // Truncate only if the prompt is extremely large (> 80,000 chars ≈ 20,000 tokens).
-    // This is a safety net for runaway inputs; Tier 1 context window is 1M tokens.
-    private static string TruncateIfNeeded(string prompt) =>
-        prompt.Length > 80_000 ? prompt[..80_000] + "\n\n[Source data truncated]" : prompt;
+    // Hard-caps the full assembled prompt at the configured PromptMaxChars ceiling.
+    // Default: 80,000 chars (~20,000 tokens). Can be raised in appsettings under
+    // Gemini:Truncation:PromptMaxChars — Tier 1 supports up to ~4M tokens/min.
+    private string TruncateIfNeeded(string prompt)
+    {
+        var max = _settings.Truncation.PromptMaxChars;
+        return prompt.Length > max
+            ? prompt[..max] + "\n\n[Source data truncated]"
+            : prompt;
+    }
 }
