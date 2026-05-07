@@ -23,7 +23,7 @@
     <div class="dg-field">
         <label class="dg-label">Choose an option</label>
         <select class="dg-select" @bind="_sourceType">
-            <option value="">-- Select --</option>
+            <option value="">Select your source…</option>
             @foreach (var opt in SourceTypes.Options)
             {
                 <option value="@opt.Value">@opt.Label</option>
@@ -34,7 +34,7 @@
     @if (ShowJira)
     {
         <div class="dg-field">
-            <label class="dg-label">JIRA Ticket ID(s)</label>
+            <label class="dg-label">Jira Ticket ID(s)</label>
             <div class="dg-tag-wrapper" @onclick="FocusTagInput">
                 @foreach (var tag in _ticketIds)
                 {
@@ -70,7 +70,7 @@
         </div>
     }
 
-    <hr class="dg-divider" />
+    <hr class="dg-divider" style="margin-top: 28px; margin-bottom: 22px;" />
 
     <!-- OUTPUT -->
     <p class="dg-section-title">Output</p>
@@ -144,7 +144,7 @@
             @if (_state == UiState.Validating)
             {
                 <p class="dg-modal-heading">
-                    @(_validationRunning ? "🔍 Checking inputs…" : "⚠️ Some checks failed")
+                    @(_validationRunning ? ValidationHeading : "⚠️ Some checks failed")
                 </p>
 
                 <div class="dg-validation-list" style="text-align:left; margin-top:8px;">
@@ -166,13 +166,19 @@
                         <div class="dg-validation-row dg-vstatus-checking">
                             <span class="dg-vicon">⏳</span>
                             <div class="dg-vtext">
-                                <span class="dg-vlabel">Validating…</span>
+                                <span class="dg-vlabel">@ValidationProgressLabel</span>
                             </div>
                         </div>
                     }
                 </div>
 
-                @if (!_validationRunning)
+                @if (_validationRunning)
+                {
+                    <button class="dg-btn-ghost" style="margin-top:16px;" @onclick="CancelValidation">
+                        ✕ Cancel
+                    </button>
+                }
+                else
                 {
                     <button class="dg-btn-ghost" style="margin-top:16px;" @onclick="CloseDialog">
                         ← Back to form
@@ -317,8 +323,26 @@
     private bool _showDialog = false;
 
     // ─── Validation ───────────────────────────────────────────────────────────────
-    private List<ValidationRow> _validationRows   = new();
-    private bool                _validationRunning = false;
+    private List<ValidationRow> _validationRows    = new();
+    private bool                _validationRunning  = false;
+    private bool                _validationCancelled = false;
+
+    // Context-aware labels shown inside the validation modal while running
+    private string ValidationHeading => _sourceType switch
+    {
+        "JiraOnly" => "🔍 Checking Jira connection…",
+        "GitOnly"  => "🔍 Checking repository…",
+        "Both"     => "🔍 Checking Jira & repository…",
+        _          => "🔍 Checking inputs…"
+    };
+
+    private string ValidationProgressLabel => _sourceType switch
+    {
+        "JiraOnly" => "Fetching Jira ticket data…",
+        "GitOnly"  => "Connecting to repository…",
+        "Both"     => "Fetching Jira tickets & repository…",
+        _          => "Validating inputs…"
+    };
 
     // ─── Live status ──────────────────────────────────────────────────────────────
     private string _statusMessage = "⏳ Starting…";
@@ -377,6 +401,9 @@
 
         _validationRunning = false;
         _validationRows    = rows;
+
+        // User hit Cancel while validation was running — silently discard
+        if (_validationCancelled) { _validationCancelled = false; return; }
 
         // If the user already closed the dialog, do nothing
         if (!_showDialog) return;
@@ -500,6 +527,18 @@
         }
     }
 
+    /// <summary>
+    /// Called when the user clicks Cancel during active validation.
+    /// Sets a flag so StartValidation() discards results when the async task finishes.
+    /// </summary>
+    private void CancelValidation()
+    {
+        _validationCancelled = true;
+        _validationRunning   = false;
+        _showDialog          = false;
+        _state               = UiState.Form;
+    }
+
     private void ResetForm()
     {
         _sourceType        = "";
@@ -510,11 +549,12 @@
         _outputFileName    = "";
         _ticketInput       = "";
         _ticketIds         = new();
-        _result            = null;
-        _errorMessage      = "";
-        _statusMessage     = "⏳ Starting…";
-        _validationRows    = new();
-        _validationRunning = false;
+        _result               = null;
+        _errorMessage         = "";
+        _statusMessage        = "⏳ Starting…";
+        _validationRows       = new();
+        _validationRunning    = false;
+        _validationCancelled  = false;
 
         // Cancel any in-flight polling (shouldn't happen, but defensive)
         _pollingCts?.Cancel();
