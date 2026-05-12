@@ -424,6 +424,11 @@ public class GeminiService : IGeminiService
                 { issues.Add("architectureDescription is empty"); score -= 20; }
                 else if (result.ArchitectureDescription.Split(' ').Length < 80)
                 { issues.Add($"architectureDescription is thin ({result.ArchitectureDescription.Split(' ').Length} words)"); score -= 10; }
+                if (string.IsNullOrWhiteSpace(result.ArchitectureDiagram))
+                { issues.Add("architectureDiagram is missing"); score -= 10; }
+                else if (!result.ArchitectureDiagram.Contains("graph", StringComparison.OrdinalIgnoreCase) &&
+                         !result.ArchitectureDiagram.Contains("flowchart", StringComparison.OrdinalIgnoreCase))
+                { issues.Add("architectureDiagram does not look like valid Mermaid syntax"); score -= 5; }
                 break;
         }
 
@@ -622,7 +627,7 @@ public class GeminiService : IGeminiService
     private static readonly HashSet<string> _stringFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "executiveSummary", "technicalOverview", "architectureDescription",
-        "userGuide", "setupInstructions", "configurationGuide"
+        "architectureDiagram", "userGuide", "setupInstructions", "configurationGuide"
     };
 
     private static string? FlattenStringFields(string json)
@@ -743,6 +748,7 @@ public class GeminiService : IGeminiService
         RedistributeFromField(r, r.TechnicalOverview,       v => r.TechnicalOverview       = v);
         RedistributeFromField(r, r.UserGuide,               v => r.UserGuide               = v);
         RedistributeFromField(r, r.ArchitectureDescription, v => r.ArchitectureDescription = v);
+        RedistributeFromField(r, r.ArchitectureDiagram,     v => r.ArchitectureDiagram     = v);
     }
 
     private static void RedistributeFromField(
@@ -927,6 +933,7 @@ public class GeminiService : IGeminiService
         var summary     = Extract(raw, "executiveSummary");
         var techOver    = Extract(raw, "technicalOverview");
         var archDesc    = Extract(raw, "architectureDescription");
+        var archDiagram = Extract(raw, "architectureDiagram");
         var userGuide   = Extract(raw, "userGuide");
         var setupInstr  = Extract(raw, "setupInstructions");
         var configGuide = Extract(raw, "configurationGuide");
@@ -944,6 +951,7 @@ public class GeminiService : IGeminiService
             ExecutiveSummary        = string.IsNullOrWhiteSpace(summary) ? string.Empty : summary + Notice,
             TechnicalOverview       = techOver    ?? string.Empty,
             ArchitectureDescription = archDesc    ?? string.Empty,
+            ArchitectureDiagram     = archDiagram ?? string.Empty,
             UserGuide               = userGuide   ?? string.Empty,
             SetupInstructions       = setupInstr  ?? string.Empty,
             ConfigurationGuide      = configGuide ?? string.Empty,
@@ -1169,7 +1177,7 @@ public class GeminiService : IGeminiService
             "API REFERENCE: every endpoint with method, path, plain-text request/response.",
 
         DocumentationType.ArchitectureOverview =>
-            "ARCHITECTURE OVERVIEW: components, data flow, tech choices from SOURCE DATA.",
+            "ARCHITECTURE OVERVIEW: components, data flow, tech choices, and a Mermaid diagram from SOURCE DATA.",
 
         _ =>
             "FULL DOCUMENTATION: executive summary, tech details, user guide, setup, architecture."
@@ -1187,7 +1195,7 @@ public class GeminiService : IGeminiService
             """{"executiveSummary":"base URL/auth","technicalOverview":"## Auth ## Errors","apiEndpoints":[{"method":"GET","path":"/api/x","description":"what it does","requestBody":"params in plain text","responseBody":"response in plain text"}],"recommendations":[""]}""",
 
         DocumentationType.ArchitectureOverview =>
-            """{"executiveSummary":"system/stack","technicalOverview":"## Stack ## Runtime","architectureDescription":"## Components\n## Data Flow\n## Security","dependencies":["lib vX — role"],"recommendations":[""]}""",
+            """{"executiveSummary":"system/stack","technicalOverview":"## Stack ## Runtime","architectureDescription":"## Components\n## Data Flow\n## Security","architectureDiagram":"graph TD\n    A[Client] --> B[API]\n    B --> C[Service]\n    C --> D[(Database)]","dependencies":["lib vX — role"],"recommendations":[""]}""",
 
         _ /* FullDocumentation */ =>
             """{"executiveSummary":"what/who/stack","technicalOverview":"## Stack\n## Architecture","userGuide":"## Getting Started\n## How To Use","setupInstructions":"## Install\n## Configure\n## Run","configurationGuide":"key=type — purpose","features":[{"name":"","description":"","usageExample":""}],"dependencies":["pkg vX — purpose"],"recommendations":[""]}"""
@@ -1204,10 +1212,14 @@ public class GeminiService : IGeminiService
             _                                         => "Technical writer covering all audiences."
         };
 
+        var diagramInstruction = docType is DocumentationType.ArchitectureOverview or DocumentationType.FullDocumentation
+            ? " For the 'architectureDiagram' field, output a valid Mermaid flowchart (graph TD) showing the main components and their interactions. Use plain Mermaid syntax only — no markdown fences, no backticks, just the raw diagram text starting with 'graph TD' or 'flowchart TD'."
+            : string.Empty;
+
         return $"You are a {role} " +
                "Output ONLY a raw JSON object (first char {, last char }), no markdown fences. " +
                "Use ## headings inside string values for structure. " +
-               "Write real content from SOURCE DATA — no placeholders.";
+               $"Write real content from SOURCE DATA — no placeholders.{diagramInstruction}";
     }
 
     private static string Truncate(string text, int maxLength) =>

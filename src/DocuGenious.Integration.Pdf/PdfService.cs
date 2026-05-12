@@ -122,6 +122,9 @@ public class PdfService : IPdfService
             if (!string.IsNullOrWhiteSpace(result.ArchitectureDescription))
                 col.Item().Element(c => ComposeSection(c, "Architecture Overview", result.ArchitectureDescription));
 
+            if (!string.IsNullOrWhiteSpace(result.ArchitectureDiagram))
+                col.Item().Element(c => ComposeDiagramSection(c, result.ArchitectureDiagram));
+
             if (result.Features.Count > 0)
                 col.Item().Element(c => ComposeFeaturesSection(c, result.Features));
 
@@ -283,6 +286,61 @@ public class PdfService : IPdfService
                         row.RelativeItem().PaddingLeft(4).Element(c => RenderInlineText(c, item, 10));
                     });
                 }
+            });
+        });
+    }
+
+    // ─── Architecture diagram section ────────────────────────────────────────────
+
+    /// <summary>
+    /// Renders the Mermaid diagram syntax as a styled dark terminal code block,
+    /// with a heading and a note directing the reader to mermaid.live for visual rendering.
+    /// </summary>
+    private static void ComposeDiagramSection(IContainer container, string mermaidSyntax)
+    {
+        container.Column(col =>
+        {
+            col.Item().Element(c => ComposeSectionHeading(c, "Architecture Diagram"));
+
+            col.Item().PaddingTop(10).Column(inner =>
+            {
+                // Info banner
+                inner.Item()
+                    .Background("#EAF4FB")
+                    .Border(1).BorderColor(AccentColor)
+                    .Padding(8)
+                    .Row(row =>
+                    {
+                        row.ConstantItem(18).Text("ℹ").FontSize(11).FontColor(AccentColor);
+                        row.RelativeItem().PaddingLeft(4)
+                            .Text("This is a Mermaid diagram definition. " +
+                                  "Paste the code below into https://mermaid.live to visualise the architecture interactively.")
+                            .FontSize(9).FontColor(DarkGray).LineHeight(1.4f);
+                    });
+
+                // Diagram code block (dark terminal style)
+                inner.Item().PaddingTop(8)
+                    .Background(TerminalBg)
+                    .Border(1).BorderColor("#3C3C3C")
+                    .Padding(12)
+                    .Column(code =>
+                    {
+                        code.Spacing(0);
+                        foreach (var line in mermaidSyntax.Replace("\r\n", "\n").Split('\n'))
+                        {
+                            code.Item()
+                                .Text(line.TrimEnd())
+                                .FontFamily("Courier New")
+                                .FontSize(8.5f)
+                                .FontColor(TerminalFg)
+                                .LineHeight(1.5f);
+                        }
+                    });
+
+                // URL label below the block
+                inner.Item().PaddingTop(6).AlignRight()
+                    .Text("▶  View online: https://mermaid.live")
+                    .FontSize(8).Italic().FontColor(AccentColor);
             });
         });
     }

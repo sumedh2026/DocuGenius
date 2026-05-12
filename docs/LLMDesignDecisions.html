@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DocuGenious — LLM Design Decisions & Learnings</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{
+  --primary:#1E3A5F; --accent:#2E86AB; --green:#1A9E5C; --orange:#D97706;
+  --red:#DC2626; --purple:#7C3AED; --teal:#0D9488; --pink:#DB2777;
+  --bg:#F0F4F9; --white:#fff; --gray:#4B5563; --border:#D1D9E6;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--primary);font-size:14px;line-height:1.7;}
+.page{max-width:960px;margin:0 auto;padding:40px 24px 80px;}
+
+/* ── HERO ── */
+.hero{background:linear-gradient(135deg,var(--primary) 0%,#2A5080 100%);border-radius:14px;padding:36px 40px;margin-bottom:36px;}
+.hero h1{font-size:26px;font-weight:800;color:#fff;margin-bottom:6px;}
+.hero p{font-size:13.5px;color:#93BFDA;max-width:680px;line-height:1.6;}
+.hero-pills{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+.pill{background:rgba(255,255,255,0.1);color:#B8D9EF;font-size:11.5px;font-weight:600;padding:5px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.15);}
+
+/* ── SECTION ── */
+.section{background:var(--white);border:1px solid var(--border);border-radius:12px;margin-bottom:24px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.05);}
+.section-header{padding:18px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
+.section-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.section-title{font-size:17px;font-weight:800;color:var(--primary);}
+.section-subtitle{font-size:12px;color:#8A9BB0;margin-top:2px;}
+.section-body{padding:20px 24px 24px;}
+
+/* ── GRID ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+@media(max-width:680px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+
+/* ── CARDS ── */
+.card{background:#F7FAFD;border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
+.card-title{font-size:12.5px;font-weight:700;color:var(--primary);margin-bottom:6px;}
+.card-body{font-size:12px;color:var(--gray);line-height:1.6;}
+
+/* ── COMPARE TABLE ── */
+.compare-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;}
+.compare-table th{padding:8px 14px;background:#F0F4F9;font-weight:700;color:var(--primary);text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;border-bottom:2px solid var(--border);}
+.compare-table td{padding:9px 14px;border-bottom:1px solid #EEF2F8;color:var(--gray);vertical-align:top;}
+.compare-table tr:last-child td{border-bottom:none;}
+.compare-table td:first-child{font-weight:600;color:var(--primary);}
+.compare-table tr:hover td{background:#FAFCFF;}
+.tag-green{display:inline-block;background:#D1FAE5;color:#065F46;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;}
+.tag-red  {display:inline-block;background:#FEE2E2;color:#991B1B;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;}
+.tag-amber{display:inline-block;background:#FEF3C7;color:#92400E;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;}
+.tag-blue {display:inline-block;background:#DBEAFE;color:#1E40AF;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;}
+
+/* ── ALERTS ── */
+.alert{border-radius:8px;padding:12px 16px;font-size:12.5px;display:flex;gap:10px;margin-bottom:12px;line-height:1.5;}
+.alert:last-child{margin-bottom:0;}
+.alert.green {background:#F0FDF4;border-left:3px solid var(--green);}
+.alert.blue  {background:#EFF6FF;border-left:3px solid var(--accent);}
+.alert.amber {background:#FFFBEB;border-left:3px solid var(--orange);}
+.alert.red   {background:#FEF2F2;border-left:3px solid var(--red);}
+.alert.purple{background:#F5F3FF;border-left:3px solid var(--purple);}
+.alert.teal  {background:#F0FDFA;border-left:3px solid var(--teal);}
+.alert-icon{font-size:15px;flex-shrink:0;margin-top:1px;}
+.alert strong{color:var(--primary);}
+
+/* ── TIMELINE ── */
+.timeline{list-style:none;padding:0;position:relative;}
+.timeline::before{content:'';position:absolute;left:18px;top:0;bottom:0;width:2px;background:var(--border);}
+.timeline li{position:relative;padding:0 0 20px 48px;}
+.timeline li:last-child{padding-bottom:0;}
+.tl-dot{position:absolute;left:10px;top:4px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}
+.tl-title{font-size:13px;font-weight:700;color:var(--primary);margin-bottom:3px;}
+.tl-body{font-size:12px;color:var(--gray);line-height:1.55;}
+.tl-commit{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#7C3AED;background:#F5F3FF;padding:2px 7px;border-radius:4px;margin-top:4px;display:inline-block;}
+
+/* ── CONFIG TABLE ── */
+.config-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.config-table th{padding:7px 12px;background:#F7FAFD;font-weight:700;color:var(--primary);text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;border-bottom:1px solid var(--border);}
+.config-table td{padding:8px 12px;border-bottom:1px solid #EEF2F8;vertical-align:top;}
+.config-table tr:last-child td{border-bottom:none;}
+.config-table td:first-child{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);}
+.config-table td:nth-child(2){font-family:'JetBrains Mono',monospace;font-size:11px;color:#374151;}
+.config-table td:nth-child(3){font-size:12px;color:var(--gray);}
+.config-table tr:hover td{background:#FAFCFF;}
+
+/* ── GUARDRAIL CARDS ── */
+.gr-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;}
+.gr-card:last-child{margin-bottom:0;}
+.gr-header{padding:10px 16px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;}
+.gr-body{padding:10px 16px 14px;font-size:12px;color:var(--gray);line-height:1.6;border-top:1px solid var(--border);}
+.gr-body ul{padding-left:18px;margin-top:4px;}
+.gr-body li{margin-bottom:3px;}
+
+code{font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#EEF2FF;color:var(--primary);padding:1px 6px;border-radius:4px;}
+.divider{height:1px;background:var(--border);margin:20px 0;}
+p{margin-bottom:10px;}
+p:last-child{margin-bottom:0;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>🧠 DocuGenious — LLM Design Decisions &amp; Learnings</h1>
+    <p>Technical deep-dive covering LLM selection rationale, key development learnings, output validation strategy, configuration architecture, and security guardrails.</p>
+    <div class="hero-pills">
+      <span class="pill">Google Gemini 2.5 Flash</span>
+      <span class="pill">.NET 10 · ASP.NET Core</span>
+      <span class="pill">Blazor WebAssembly</span>
+      <span class="pill">QuestPDF</span>
+      <span class="pill">LibGit2Sharp</span>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       1. WHY THIS LLM
+  ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:#EFF6FF;">🤔</div>
+      <div>
+        <div class="section-title">1. Why did you choose this LLM?</div>
+        <div class="section-subtitle">LLM selection journey — from Groq to Google Gemini 2.5 Flash</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <div class="alert blue">
+        <span class="alert-icon">💡</span>
+        <div><strong>Short answer:</strong> We started with Groq (compound-beta / LLaMA), hit severe free-tier throttling, and switched to <strong>Google Gemini 2.5 Flash</strong> for its 1M token context window, generous rate limits, and consistent structured output quality.</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <p style="font-weight:700;color:var(--primary);font-size:13px;margin-bottom:12px;">LLM Comparison — Why Gemini Won</p>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Criterion</th>
+            <th>Groq (compound-beta / LLaMA)</th>
+            <th>Google Gemini 2.5 Flash</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Context window</td>
+            <td>131K tokens</td>
+            <td><span class="tag-green">1,048,576 tokens (1M)</span></td>
+          </tr>
+          <tr>
+            <td>Free tier RPM</td>
+            <td><span class="tag-red">30 RPM (compound-beta)</span></td>
+            <td><span class="tag-amber">15 RPM free / 1,000 RPM Tier 1</span></td>
+          </tr>
+          <tr>
+            <td>Free tier TPM</td>
+            <td><span class="tag-red">70,000 TPM (compound-beta)</span></td>
+            <td><span class="tag-green">1,000,000 TPM free / 4,000,000 Tier 1</span></td>
+          </tr>
+          <tr>
+            <td>Max output tokens</td>
+            <td>8,192 tokens</td>
+            <td><span class="tag-green">65,536 tokens</span></td>
+          </tr>
+          <tr>
+            <td>Structured JSON output</td>
+            <td><span class="tag-red">Inconsistent — required 6 fallback strategies</span></td>
+            <td><span class="tag-green">Reliable with well-defined system prompt</span></td>
+          </tr>
+          <tr>
+            <td>Streaming support</td>
+            <td><span class="tag-red">compound-beta returned empty on streaming</span></td>
+            <td><span class="tag-green">Non-streaming REST API — stable and predictable</span></td>
+          </tr>
+          <tr>
+            <td>Cost per DocuGenious request</td>
+            <td>Free (but heavily throttled)</td>
+            <td><span class="tag-green">~$0.01 per generation (Tier 1)</span></td>
+          </tr>
+          <tr>
+            <td>Cloud deployment support</td>
+            <td><span class="tag-amber">Issues with Azure App Service env</span></td>
+            <td><span class="tag-green">Pure REST — works everywhere</span></td>
+          </tr>
+          <tr>
+            <td>Rate-limit retry info</td>
+            <td>Limited</td>
+            <td><span class="tag-green">Returns retryDelay in JSON error body</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="divider"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🚫 Why Groq Didn't Scale</div>
+          <div class="card-body">
+            <ul style="padding-left:16px;">
+              <li>compound-beta returned <strong>empty responses</strong> on streaming — had to switch to non-streaming</li>
+              <li>LLaMA free tier: only <strong>6,000 TPM</strong> — barely enough for 1 ticket</li>
+              <li><strong>Dynamic token cap</strong> needed to avoid HTTP 413 errors on free tier</li>
+              <li>U+2028/U+2029 Unicode line separators caused silent JSON parse failures</li>
+              <li>Required 6 fallback JSON parsing strategies to handle inconsistent output</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">✅ Why Gemini 2.5 Flash</div>
+          <div class="card-body">
+            <ul style="padding-left:16px;">
+              <li><strong>1M token context window</strong> — entire codebases fit in one call</li>
+              <li>Consistent structured JSON when given a clear system prompt</li>
+              <li><strong>retryDelay</strong> field in 429 error body enables precise retry timing</li>
+              <li>Simple REST API — no SDK dependency, works on any runtime</li>
+              <li>4M TPM on Tier 1 — effectively unlimited for a documentation tool</li>
+              <li>Single model covers all document types without switching</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       2. LEARNINGS
+  ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:#F0FDF4;">📚</div>
+      <div>
+        <div class="section-title">2. Key Learnings</div>
+        <div class="section-subtitle">Real challenges encountered and how they were resolved across 20+ commits</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <ul class="timeline">
+
+        <li>
+          <div class="tl-dot" style="background:#DC2626;">1</div>
+          <div class="tl-title">Streaming API ≠ Reliable Output</div>
+          <div class="tl-body">compound-beta's streaming endpoint returned empty responses silently. Switching to a single non-streaming POST call resolved it immediately. <strong>Lesson:</strong> always validate streaming vs non-streaming behaviour independently for each model.</div>
+          <span class="tl-commit">Switch from streaming to non-streaming API call</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#D97706;">2</div>
+          <div class="tl-title">LLMs Produce Inconsistent JSON — Build Fallback Pipelines</div>
+          <div class="tl-body">Even with explicit JSON instructions, Groq returned malformed collections, nested objects instead of arrays, and raw strings where lists were expected. Six fallback strategies were implemented: direct parse → lenient parse → field extraction → flatten → strip markdown → last-resort recovery. <strong>Lesson:</strong> never trust a single JSON parse path with LLM output.</div>
+          <span class="tl-commit">Add flexible JSON converters for collection fields</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#7C3AED;">3</div>
+          <div class="tl-title">Unicode Line Separators Silently Break JSON</div>
+          <div class="tl-body">U+2028 (Line Separator) and U+2029 (Paragraph Separator) are valid in JavaScript strings but illegal in JSON strings per RFC 8259. LLMs sometimes emit them in generated text, causing <code>JsonException</code> at parse time with no obvious error message. <strong>Lesson:</strong> sanitise LLM output for invisible Unicode characters before parsing.</div>
+          <span class="tl-commit">Fix JSON parse failure caused by U+2028/U+2029 Unicode line separators</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#0D9488;">4</div>
+          <div class="tl-title">Truncation Is Critical — And Must Be Configurable</div>
+          <div class="tl-body">Without truncation, a single large Git repo could exceed context limits or generate enormous token costs. Initially hardcoded at 2,000 chars/file — later made fully configurable via <code>appsettings.json</code> so operators can tune the quality vs cost trade-off without code changes. Current production values: 5,000 chars/file, 100,000 char prompt cap.</div>
+          <span class="tl-commit">Make Gemini context truncation limits configurable via appsettings</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#2E86AB;">5</div>
+          <div class="tl-title">Git Clone Fails on Cloud Environments Without Temp Directory</div>
+          <div class="tl-body">On Azure App Service, the application directory is read-only. Cloning into a relative path (e.g. <code>./clones</code>) caused permission failures at runtime. Fix: use <code>Path.GetTempPath()</code> with a unique subdirectory per clone. This also works on Docker, Linux, and any CI environment. <strong>Lesson:</strong> always use the OS temp directory for ephemeral file operations in cloud deployments.</div>
+          <span class="tl-commit">Fix Git clone failure on Azure App Service — use temp directory</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#DB2777;">6</div>
+          <div class="tl-title">Rate Limit Retries Need Precise Timing</div>
+          <div class="tl-body">Gemini embeds the exact wait duration in the 429 error body as <code>error.details[].retryDelay</code> (e.g. <code>"4.197s"</code>). Parsing this and waiting exactly that long + 1s buffer gave much higher retry success rates than a fixed 5s sleep. Multiple formats handled: <code>"4s"</code>, <code>"4.197184507s"</code>, <code>Retry-After</code> header, and inline error message text.</div>
+          <span class="tl-commit">ExtractRetryDelay / ParseRetryAfterSeconds implementation</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#1A9E5C;">7</div>
+          <div class="tl-title">UI State Machine Eliminates Race Conditions</div>
+          <div class="tl-body">Early versions had scattered boolean flags (<code>_isLoading</code>, <code>_hasError</code>, <code>_showResult</code>) that could reach impossible states. Replacing them with a single <code>UiState</code> enum (<code>Form → Validating → Generating → Success/Error</code>) made transitions explicit and eliminated entire categories of bugs including the "Close resets document type" issue.</div>
+          <span class="tl-commit">Fix Document Type resetting to wrong value on Close/Back to form</span>
+        </li>
+
+        <li>
+          <div class="tl-dot" style="background:#1E3A5F;">8</div>
+          <div class="tl-title">Branding in Status Messages Leaks Implementation Details</div>
+          <div class="tl-body">Live status messages said <em>"Analysing with Gemini AI…"</em>. Users interact with <em>Docu-Genius</em>, not Gemini — exposing the underlying model is a branding concern and creates upgrade friction if the LLM changes. Changed to <em>"Analysing and generating…"</em>. <strong>Lesson:</strong> abstract LLM identity from user-facing messages from day one.</div>
+          <span class="tl-commit">Polish UI: remove AI branding from status message</span>
+        </li>
+
+      </ul>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       3. OUTPUT VALIDATION
+  ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:#FEF3C7;">✅</div>
+      <div>
+        <div class="section-title">3. How Did You Validate the Output?</div>
+        <div class="section-subtitle">Multi-layer validation from input to final PDF</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <div class="grid-3" style="margin-bottom:16px;">
+        <div class="card" style="border-top:3px solid var(--accent);">
+          <div class="card-title">Layer 1 — Input Validation</div>
+          <div class="card-body">Before any API call is made, the Blazor UI + ValidationService verify source type, ticket IDs, repo URL, and document type. User Guide requires all tickets to be in Done/Complete status.</div>
+        </div>
+        <div class="card" style="border-top:3px solid var(--green);">
+          <div class="card-title">Layer 2 — AI Output Normalisation</div>
+          <div class="card-body">After Gemini responds, <code>NormalizeResult()</code> strips placeholder text and empty arrays. <code>RedistributeSections()</code> rescues content that was placed in the wrong field.</div>
+        </div>
+        <div class="card" style="border-top:3px solid var(--purple);">
+          <div class="card-title">Layer 3 — PDF Rendering</div>
+          <div class="card-body">QuestPDF renders each section conditionally — empty fields are silently skipped, so the PDF is never padded with blank sections regardless of what the AI returns.</div>
+        </div>
+      </div>
+
+      <div class="alert blue" style="margin-bottom:10px;">
+        <span class="alert-icon">🔍</span>
+        <div><strong>Input Validation (ValidationService)</strong> — Checks run live in the modal before generation starts:
+          <ul style="padding-left:18px;margin-top:4px;">
+            <li>Jira connection reachable + credentials valid</li>
+            <li>Each ticket ID exists and is accessible</li>
+            <li>Git repository URL is reachable and the branch exists</li>
+            <li>Output file name is safe (no path traversal characters)</li>
+            <li>Document type is valid — User Guide blocked if any ticket is not Done</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="alert green" style="margin-bottom:10px;">
+        <span class="alert-icon">🤖</span>
+        <div><strong>AI Output Normalisation (GeminiService)</strong> — Applied to every <code>AnalysisResult</code>:
+          <ul style="padding-left:18px;margin-top:4px;">
+            <li><code>NormalizeResult()</code> — removes filler phrases like "N/A", "Not applicable", empty brackets</li>
+            <li><code>RedistributeSections()</code> — scans executive summary for <code>## Heading</code> markers and moves them to the correct field</li>
+            <li><strong>6-strategy JSON fallback pipeline</strong> — handles malformed output, nested objects, Unicode issues, and markdown-wrapped JSON</li>
+            <li>Guard: if all Jira tickets fail to fetch, generation is aborted before the AI call</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="alert purple">
+        <span class="alert-icon">📄</span>
+        <div><strong>PDF Output Validation (PdfService)</strong>:
+          <ul style="padding-left:18px;margin-top:4px;">
+            <li>Each section rendered only when its corresponding <code>AnalysisResult</code> field is non-empty</li>
+            <li>Inline markdown parser converts <code>**bold**</code>, <code>*italic*</code>, headers, bullet lists to styled PDF elements</li>
+            <li>JSON → Markdown fallback if a field contains raw JSON instead of prose</li>
+            <li>File written to <code>./output</code> directory, path returned to client for download</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       4. CONFIGURATIONS
+  ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:#F5F3FF;">⚙️</div>
+      <div>
+        <div class="section-title">4. Configurations</div>
+        <div class="section-subtitle">All settings are managed via <code>appsettings.json</code> — no hardcoded values</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <!-- Jira -->
+      <p style="font-weight:700;font-size:12.5px;color:var(--primary);margin-bottom:8px;">🔷 Jira Settings</p>
+      <table class="config-table" style="margin-bottom:20px;">
+        <thead><tr><th>Key</th><th>Example / Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Jira:BaseUrl</td><td>https://your-domain.atlassian.net</td><td>Atlassian cloud instance URL</td></tr>
+          <tr><td>Jira:Username</td><td>your-email@example.com</td><td>Jira account email for Basic Auth</td></tr>
+          <tr><td>Jira:ApiToken</td><td>ATATT3x…</td><td>Jira API token (not password). Generate at id.atlassian.com</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Git -->
+      <p style="font-weight:700;font-size:12.5px;color:var(--primary);margin-bottom:8px;">🔷 Git Settings</p>
+      <table class="config-table" style="margin-bottom:20px;">
+        <thead><tr><th>Key</th><th>Example / Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Git:Username</td><td>your-github-username</td><td>GitHub username for authenticated clone</td></tr>
+          <tr><td>Git:PersonalAccessToken</td><td>ghp_xxx…</td><td>GitHub PAT with <code>repo</code> read scope</td></tr>
+          <tr><td>Git:CloneDirectory</td><td><em>empty</em> (recommended)</td><td>Base path for clones. Empty = OS temp dir (safe on Azure, Docker, Linux)</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Gemini -->
+      <p style="font-weight:700;font-size:12.5px;color:var(--primary);margin-bottom:8px;">🔷 Gemini AI Settings</p>
+      <table class="config-table" style="margin-bottom:20px;">
+        <thead><tr><th>Key</th><th>Current Value</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Gemini:ApiKey</td><td>AIzaSy…</td><td>Google AI Studio API key</td></tr>
+          <tr><td>Gemini:Model</td><td>gemini-2.5-flash</td><td>Model identifier. Swap to <code>gemini-2.5-pro</code> for higher quality</td></tr>
+          <tr><td>Gemini:MaxOutputTokens</td><td>16384</td><td>Max tokens the model generates per request</td></tr>
+          <tr><td>Gemini:TimeoutSeconds</td><td>300</td><td>HTTP timeout for each Gemini API call (5 min)</td></tr>
+          <tr><td>Gemini:BaseUrl</td><td>https://generativelanguage.googleapis.com/v1beta</td><td>Gemini REST API base URL</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Truncation -->
+      <p style="font-weight:700;font-size:12.5px;color:var(--primary);margin-bottom:8px;">🔷 Truncation Settings <span style="font-size:11px;font-weight:400;color:var(--gray);">(under <code>Gemini:Truncation</code>)</span></p>
+      <div class="alert amber" style="margin-bottom:10px;">
+        <span class="alert-icon">⚠️</span>
+        <div>These control how much source data is sent to Gemini. <strong>Higher values = richer AI context but more tokens and cost.</strong> All values are in characters (≈ tokens × 4).</div>
+      </div>
+      <table class="config-table" style="margin-bottom:20px;">
+        <thead><tr><th>Key</th><th>Code Default</th><th>Current (appsettings)</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>JiraDescriptionMaxChars</td>
+            <td>2,000</td>
+            <td><strong>5,000</strong></td>
+            <td>Max chars from each Jira ticket description</td>
+          </tr>
+          <tr>
+            <td>JiraAcceptanceCriteriaMaxChars</td>
+            <td>300</td>
+            <td><strong>1,000</strong></td>
+            <td>Max chars per acceptance criteria item</td>
+          </tr>
+          <tr>
+            <td>JiraCommentMaxChars</td>
+            <td>300</td>
+            <td><strong>1,000</strong></td>
+            <td>Max chars per Jira comment body</td>
+          </tr>
+          <tr>
+            <td>GitCommitMessageMaxChars</td>
+            <td>200</td>
+            <td><strong>1,000</strong></td>
+            <td>Max chars per Git commit message</td>
+          </tr>
+          <tr>
+            <td>GitFileContentMaxChars</td>
+            <td>2,000</td>
+            <td><strong>5,000</strong></td>
+            <td>Max chars of source-file content per file. Most impactful setting</td>
+          </tr>
+          <tr>
+            <td>PromptMaxChars</td>
+            <td>80,000</td>
+            <td><strong>100,000</strong></td>
+            <td>Hard ceiling on entire assembled prompt (~25,000 tokens)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Output -->
+      <p style="font-weight:700;font-size:12.5px;color:var(--primary);margin-bottom:8px;">🔷 Output Settings</p>
+      <table class="config-table">
+        <thead><tr><th>Key</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Output:PdfDirectory</td><td>./output</td><td>Directory where generated PDF files are saved. Relative to API working directory</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       5. GUARDRAILS & SECURITY
+  ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:#FEF2F2;">🛡️</div>
+      <div>
+        <div class="section-title">5. Guardrails, Security &amp; Resilience</div>
+        <div class="section-subtitle">Input safety, secret management, rate-limit handling, and AI output sanitation</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <!-- Secret Management -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#FEF2F2;">
+          <span>🔑</span> Secret &amp; Credential Management
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li><strong>No secrets in code</strong> — all API tokens, passwords, and keys are stored exclusively in <code>appsettings.json</code> / environment variables</li>
+            <li><code>appsettings.Development.json</code> is listed in <code>.gitignore</code> — developer credentials are never committed to the repository</li>
+            <li><code>appsettings.json</code> ships with placeholder values (<code>YOUR_GEMINI_API_KEY</code>, <code>YOUR_JIRA_API_TOKEN</code>) — no real secrets in version control</li>
+            <li>In production: credentials should be injected via <strong>Azure Key Vault</strong>, environment variables, or a secrets manager — not baked into the image</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Path Traversal -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#FFF7ED;">
+          <span>📁</span> Path Traversal Prevention
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li>The <code>GET /api/documentation/download/{fileName}</code> endpoint sanitises the file name with <code>Path.GetFileName(fileName)</code> before constructing the full path — prevents <code>../../../etc/passwd</code> style attacks</li>
+            <li>The output directory is resolved with <code>Path.GetFullPath("./output")</code> and the final path is validated to reside within that directory</li>
+            <li>Git clone directory defaults to <code>Path.GetTempPath()</code> with a unique GUID subdirectory — no user-controlled path components</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- AI Input Guardrails -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#F0FDF4;">
+          <span>🤖</span> AI Input Guardrails
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li><strong>Empty source guard:</strong> if all requested Jira tickets fail to fetch, the generation pipeline is aborted before any AI call is made — prevents sending empty context that causes hallucinated content</li>
+            <li><strong>Prompt truncation:</strong> a hard <code>PromptMaxChars</code> ceiling caps the entire assembled prompt. Any overflow is cut and <code>[Source data truncated]</code> is appended so the AI knows context was limited</li>
+            <li><strong>Per-field truncation:</strong> each source data field (description, comments, file content) is individually capped before assembly — prevents a single large field from consuming the entire budget</li>
+            <li><strong>User Guide status gate:</strong> User Guide generation is blocked if any selected Jira ticket is not in Done/Complete status — ensures the guide reflects finished, shipped work</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- AI Output Guardrails -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#F5F3FF;">
+          <span>📤</span> AI Output Guardrails
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li><strong>NormalizeResult:</strong> strips placeholder text, "N/A" values, and empty collections from the AI response before PDF generation</li>
+            <li><strong>RedistributeSections:</strong> rescues content misrouted by the AI (e.g. technical details placed in the executive summary)</li>
+            <li><strong>6-strategy JSON fallback pipeline:</strong> handles malformed JSON, nested structures, Unicode line separators, and markdown-wrapped responses — no single parse failure crashes the pipeline</li>
+            <li><strong>Conditional PDF rendering:</strong> sections with empty content are silently skipped — the output document never contains blank or placeholder sections</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Rate Limiting & Resilience -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#EFF6FF;">
+          <span>🔁</span> Rate Limiting &amp; Resilience
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li><strong>429 auto-retry:</strong> up to 3 retries on Gemini quota-exceeded responses. Uses <code>retryDelay</code> from the Gemini JSON error body if present, otherwise waits 5s + 1s buffer</li>
+            <li><strong>5xx exponential backoff:</strong> server errors retry at 1.5s → 4s → 9s intervals before propagating</li>
+            <li><strong>Per-call timeout:</strong> each Gemini API call is wrapped in a <code>CancellationTokenSource</code> with <code>TimeoutSeconds</code> (default 300s) — hangs never block indefinitely</li>
+            <li><strong>Polling cleanup:</strong> the <code>JobStatusService</code> auto-expires stale job entries after 30 minutes and purges them on every write</li>
+            <li><strong>Git clone cleanup:</strong> cloned repositories are deleted after analysis regardless of success or failure — temp storage is never leaked</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- CORS -->
+      <div class="gr-card">
+        <div class="gr-header" style="background:#F0FDFA;">
+          <span>🌐</span> CORS &amp; Network Security
+        </div>
+        <div class="gr-body">
+          <ul>
+            <li>CORS policy is configured via <code>Cors:AllowedOrigins</code> in <code>appsettings.json</code> — no wildcard <code>*</code> in production</li>
+            <li>In development the Blazor WASM origin (<code>http://localhost:5XXX</code>) is the only allowed origin</li>
+            <li>All external API calls (Gemini, Jira, GitHub) are made server-side from the API — the browser never holds credentials or makes direct LLM calls</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Summary row -->
+      <div style="margin-top:20px;">
+        <div class="grid-3">
+          <div class="alert green" style="margin-bottom:0;">
+            <span class="alert-icon">✅</span>
+            <div><strong>Secrets</strong><br/>Never in code or git history</div>
+          </div>
+          <div class="alert blue" style="margin-bottom:0;">
+            <span class="alert-icon">🔁</span>
+            <div><strong>Retries</strong><br/>3× for 429, 3× for 5xx with backoff</div>
+          </div>
+          <div class="alert purple" style="margin-bottom:0;">
+            <span class="alert-icon">🤖</span>
+            <div><strong>AI output</strong><br/>Normalised, redistributed, conditionally rendered</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:#8A9BB0;">
+    <span>DocuGenious — LLM Design Decisions &amp; Learnings</span>
+    <span>May 2026 · Gemini 2.5 Flash · .NET 10</span>
+  </div>
+
+</div>
+</body>
+</html>
