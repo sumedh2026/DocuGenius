@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DocuGenious – Class Documentation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{
+  --primary:#1E3A5F;--accent:#2E86AB;--green:#1A9E5C;--orange:#D97706;
+  --red:#DC2626;--purple:#7C3AED;--pink:#DB2777;--teal:#0D9488;
+  --bg:#F0F4F9;--white:#FFFFFF;--gray:#4B5563;--border:#D1D9E6;
+  --sidebar-w:260px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--primary);font-size:14px;line-height:1.6;display:flex;}
+
+/* ── SIDEBAR ── */
+.sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--primary);position:fixed;top:0;left:0;overflow-y:auto;z-index:100;padding-bottom:40px;}
+.sidebar-logo{padding:20px 20px 14px;border-bottom:1px solid rgba(255,255,255,0.1);}
+.sidebar-logo h2{font-size:16px;font-weight:800;color:#fff;}
+.sidebar-logo p{font-size:11px;color:#7A9BBF;margin-top:2px;}
+.nav-section{padding:14px 16px 4px;font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#5A8AAF;}
+.nav-item{display:block;padding:7px 20px;font-size:12.5px;color:#B0C8E0;text-decoration:none;border-left:3px solid transparent;transition:all 0.15s;}
+.nav-item:hover,.nav-item.active{background:rgba(255,255,255,0.07);border-left-color:var(--accent);color:#fff;}
+.nav-badge{display:inline-block;background:rgba(46,134,171,0.3);color:#7AC4E0;font-size:10px;padding:1px 7px;border-radius:10px;margin-left:6px;}
+
+/* ── MAIN ── */
+.main{margin-left:var(--sidebar-w);flex:1;padding:32px 36px 60px;}
+
+/* ── HERO ── */
+.hero{background:linear-gradient(135deg,var(--primary) 0%,#2A5080 100%);border-radius:12px;padding:30px 36px;margin-bottom:28px;}
+.hero h1{font-size:24px;font-weight:800;color:#fff;margin-bottom:4px;}
+.hero p{font-size:13px;color:#93BFDA;max-width:600px;}
+.hero-stats{display:flex;gap:28px;margin-top:16px;flex-wrap:wrap;}
+.hero-stat{font-size:12px;color:#7AC4E0;display:flex;align-items:center;gap:6px;}
+
+/* ── PROJECT SECTION ── */
+.project-header{display:flex;align-items:center;gap:12px;margin:36px 0 16px;}
+.project-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.project-title{font-size:19px;font-weight:800;color:var(--primary);}
+.project-desc{font-size:12.5px;color:var(--gray);margin-top:2px;}
+.project-divider{flex:1;height:2px;background:var(--border);border-radius:1px;}
+
+/* ── CLASS CARD ── */
+.class-card{background:var(--white);border:1px solid var(--border);border-radius:10px;margin-bottom:18px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.05);}
+.class-card-header{padding:16px 22px;display:flex;align-items:flex-start;gap:14px;border-bottom:1px solid var(--border);}
+.class-type-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:0.3px;text-transform:uppercase;white-space:nowrap;flex-shrink:0;margin-top:2px;}
+.badge-class    {background:#DBEAFE;color:#1E40AF;}
+.badge-interface{background:#D1FAE5;color:#065F46;}
+.badge-enum     {background:#FEF3C7;color:#92400E;}
+.badge-record   {background:#EDE9FE;color:#5B21B6;}
+.badge-static   {background:#FCE7F3;color:#9D174D;}
+.class-name{font-size:15px;font-weight:800;color:var(--primary);}
+.class-namespace{font-size:11px;color:#8A9BB0;margin-top:2px;font-family:'JetBrains Mono',monospace;}
+.class-inherits{font-size:11.5px;color:var(--accent);margin-top:3px;}
+.class-desc{font-size:13px;color:var(--gray);padding:14px 22px 0;line-height:1.6;}
+.class-body{padding:14px 22px 18px;}
+
+/* ── TABS ── */
+.tab-group{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;margin-top:10px;}
+.tab{padding:7px 16px;font-size:12px;font-weight:600;color:#8A9BB0;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* ── PROPS TABLE ── */
+.props-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.props-table th{padding:7px 12px;background:#F7FAFD;font-weight:700;color:var(--primary);text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;border-bottom:1px solid var(--border);}
+.props-table td{padding:7px 12px;border-bottom:1px solid #EEF2F8;color:var(--gray);vertical-align:top;}
+.props-table tr:last-child td{border-bottom:none;}
+.props-table td:first-child{font-weight:600;color:var(--primary);font-family:'JetBrains Mono',monospace;font-size:12px;}
+.props-table td:nth-child(2){color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+.props-table tr:hover td{background:#FAFCFF;}
+
+/* ── METHODS ── */
+.method-item{border:1px solid var(--border);border-radius:7px;margin-bottom:8px;overflow:hidden;}
+.method-sig{padding:8px 14px;background:#F7FAFD;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+.method-name{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--primary);}
+.method-return{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);margin-left:auto;white-space:nowrap;}
+.method-desc{padding:7px 14px;font-size:12px;color:var(--gray);line-height:1.5;border-top:1px solid var(--border);}
+.param-tag{display:inline-block;background:#EEF2FF;color:#3730A3;font-size:10.5px;font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:4px;margin:2px 3px 2px 0;}
+
+/* ── ENUM VALUES ── */
+.enum-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;}
+.enum-val{background:#F7FAFD;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--primary);font-weight:600;}
+.enum-val small{display:block;font-family:'Inter',sans-serif;font-size:11px;color:var(--gray);font-weight:400;margin-top:2px;}
+
+/* ── INLINE CODE ── */
+code{font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#EEF2FF;color:var(--primary);padding:1px 6px;border-radius:4px;}
+
+/* ── ALERT ── */
+.alert{border-radius:8px;padding:11px 16px;font-size:12.5px;display:flex;gap:10px;margin-bottom:12px;}
+.alert.blue{background:#EFF6FF;border-left:3px solid var(--accent);}
+.alert.green{background:#F0FDF4;border-left:3px solid var(--green);}
+.alert.amber{background:#FFFBEB;border-left:3px solid var(--orange);}
+.alert-icon{font-size:15px;flex-shrink:0;margin-top:1px;}
+
+/* ── SECTION ANCHOR ── */
+.anchor{display:block;height:70px;margin-top:-70px;visibility:hidden;}
+
+/* ── GITHUB LINK ── */
+.gh-link{display:inline-flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0;
+  background:#24292F;color:#fff;font-size:11px;font-weight:600;padding:4px 12px;
+  border-radius:6px;text-decoration:none;transition:background 0.15s;white-space:nowrap;}
+.gh-link:hover{background:#3d444d;}
+.gh-link svg{flex-shrink:0;}
+.gh-link-updated{background:#1A9E5C;}
+.gh-link-updated:hover{background:#158a50;}
+</style>
+</head>
+<body>
+
+<!-- ══════ SIDEBAR ══════ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h2>📚 DocuGenious</h2>
+    <p>Class Reference Documentation</p>
+  </div>
+
+  <div class="nav-section">Core</div>
+  <a class="nav-item" href="#core-config">AppSettings &amp; Config<span class="nav-badge">7</span></a>
+  <a class="nav-item" href="#core-interfaces">Interfaces<span class="nav-badge">5</span></a>
+  <a class="nav-item" href="#core-models">Models<span class="nav-badge">10</span></a>
+
+  <div class="nav-section">Integrations</div>
+  <a class="nav-item" href="#gemini">Integration.Gemini<span class="nav-badge">4</span></a>
+  <a class="nav-item" href="#jira">Integration.Jira<span class="nav-badge">1</span></a>
+  <a class="nav-item" href="#git">Integration.Git<span class="nav-badge">1</span></a>
+  <a class="nav-item" href="#pdf">Integration.Pdf<span class="nav-badge">1</span></a>
+  <a class="nav-item" href="#groq">Integration.Groq<span class="nav-badge">2</span></a>
+
+  <div class="nav-section">API</div>
+  <a class="nav-item" href="#api-program">Program / Startup</a>
+  <a class="nav-item" href="#api-jobstatus">JobStatusService</a>
+  <a class="nav-item" href="#api-controllers">Controllers<span class="nav-badge">5</span></a>
+
+  <div class="nav-section">Blazor UI</div>
+  <a class="nav-item" href="#blazor-services">Services<span class="nav-badge">3</span></a>
+  <a class="nav-item" href="#blazor-models">Models<span class="nav-badge">5</span></a>
+  <a class="nav-item" href="#blazor-pages">Pages<span class="nav-badge">1</span></a>
+
+  <div class="nav-section">Console CLI</div>
+  <a class="nav-item" href="#console">CliHandler</a>
+</nav>
+
+<!-- ══════ MAIN CONTENT ══════ -->
+<div class="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>📚 DocuGenious — Class Reference</h1>
+    <p>Complete documentation for every class, interface, enum, and service across all 8 projects in the solution. Each card links directly to the source file on GitHub.</p>
+    <div class="hero-stats">
+      <span class="hero-stat">🏗️ 8 Projects</span>
+      <span class="hero-stat">📦 ~41 Classes</span>
+      <span class="hero-stat">🔌 5 Interfaces</span>
+      <span class="hero-stat">🔢 3 Enums</span>
+      <span class="hero-stat">⚙️ 5 Controllers</span>
+      <span class="hero-stat">⎇ GitHub Linked</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: CORE — CONFIGURATION
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="core-config"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#EFF6FF;">⚙️</div>
+    <div>
+      <div class="project-title">DocuGenious.Core — Configuration</div>
+      <div class="project-desc">Strongly-typed settings classes that map directly to <code>appsettings.json</code> sections.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- AppSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">AppSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">Root configuration object. Injected as a singleton throughout the application. Each property maps to a top-level key in <code>appsettings.json</code>.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Jira</td><td>JiraSettings</td><td>Atlassian JIRA connection settings (URL, username, API token)</td></tr>
+          <tr><td>Git</td><td>GitSettings</td><td>GitHub credentials and optional clone directory</td></tr>
+          <tr><td>Groq</td><td>GroqSettings</td><td>Groq AI API key, model, token limits (kept for backward compatibility)</td></tr>
+          <tr><td>Gemini</td><td>GeminiSettings</td><td>Google Gemini AI API key, model, output limits</td></tr>
+          <tr><td>Output</td><td>OutputSettings</td><td>Directory where generated PDF files are saved</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JiraSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">JiraSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">Holds everything needed to authenticate with an Atlassian JIRA instance. Mapped from the <code>"Jira"</code> section in appsettings.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>BaseUrl</td><td>string</td><td>Full JIRA instance URL e.g. <code>https://your-domain.atlassian.net</code></td></tr>
+          <tr><td>Username</td><td>string</td><td>Atlassian account email address used for Basic Auth</td></tr>
+          <tr><td>ApiToken</td><td>string</td><td>Atlassian API token (generated at id.atlassian.com/manage-profile/security)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GitSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GitSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">GitHub credentials and the base directory for cloning remote repositories. Leaving <code>CloneDirectory</code> empty makes the system use <code>Path.GetTempPath()</code> automatically — required for Azure App Service deployments.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Username</td><td>string</td><td>""</td><td>GitHub account username for authenticated clone operations</td></tr>
+          <tr><td>PersonalAccessToken</td><td>string</td><td>""</td><td>GitHub PAT with <code>repo</code> scope — used in clone URL and remote validation</td></tr>
+          <tr><td>CloneDirectory</td><td>string</td><td>""</td><td>Base path for cloning. Empty = auto-use system temp. Explicit path only if you need to inspect cloned files manually.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GeminiSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GeminiSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">Configuration for the Google Gemini AI REST API integration. Controls which model is used, output token limits, HTTP timeout ceiling, and all source-data truncation limits via the nested <code>Truncation</code> section.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>ApiKey</td><td>string</td><td>""</td><td>Google AI Studio API key (aistudio.google.com/app/apikey)</td></tr>
+          <tr><td>Model</td><td>string</td><td>"gemini-2.5-flash"</td><td>Gemini model identifier. gemini-2.5-flash recommended for Tier 1.</td></tr>
+          <tr><td>MaxOutputTokens</td><td>int</td><td>8192</td><td>Max tokens in the AI response. appsettings.json overrides to 16,384.</td></tr>
+          <tr><td>TimeoutSeconds</td><td>int</td><td>300</td><td>HTTP client timeout (5 min). Streaming resets per chunk so this is only hit if Gemini goes silent.</td></tr>
+          <tr><td>BaseUrl</td><td>string</td><td>https://generativelanguage.googleapis.com/v1beta</td><td>Gemini REST API base URL</td></tr>
+          <tr><td>Truncation</td><td>GeminiTruncationSettings</td><td>see below</td><td>Nested object controlling all source-data truncation limits sent to Gemini. Added in latest commit.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GeminiTruncationSettings — NEW -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class" style="background:#D1FAE5;color:#065F46;">new class</span>
+      <div>
+        <div class="class-name">GeminiTruncationSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+        <div class="class-inherits">nested under GeminiSettings · appsettings key: Gemini:Truncation</div>
+      </div>
+    </div>
+    <div class="class-desc">Controls exactly how much source data is sent to Gemini per request. All values are in characters (≈ tokens × 4). Increase limits for richer AI context on Tier 1; decrease to reduce token cost. Every field has a safe default so omitting the section from <code>appsettings.json</code> preserves previous behaviour.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Default (code)</th><th>Current appsettings.json</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>JiraDescriptionMaxChars</td><td>int</td><td>2000</td><td><strong>5000</strong></td><td>Max characters from each JIRA ticket description sent to Gemini. Increase for very detailed tickets.</td></tr>
+          <tr><td>JiraAcceptanceCriteriaMaxChars</td><td>int</td><td>300</td><td><strong>1000</strong></td><td>Max characters per acceptance-criteria item (up to 10 items per ticket).</td></tr>
+          <tr><td>JiraCommentMaxChars</td><td>int</td><td>300</td><td><strong>1000</strong></td><td>Max characters per JIRA comment body (up to 5 comments per ticket).</td></tr>
+          <tr><td>GitCommitMessageMaxChars</td><td>int</td><td>200</td><td><strong>1000</strong></td><td>Max characters per Git commit message (up to 20 commits sent).</td></tr>
+          <tr><td>GitFileContentMaxChars</td><td>int</td><td>2000</td><td><strong>5000</strong></td><td>Max characters of source-file content per file (up to 20 files). Most impactful setting for code analysis quality.</td></tr>
+          <tr><td>PromptMaxChars</td><td>int</td><td>80000</td><td><strong>100000</strong></td><td>Hard ceiling on the entire assembled prompt. Gemini 2.5 Flash Tier 1 supports up to ~1M tokens so this can safely be raised further for large repos.</td></tr>
+        </tbody>
+      </table>
+      <div class="alert green" style="margin-top:10px;"><div class="alert-icon">✅</div><div><strong>Latest values (as set in appsettings.json):</strong> File content 5,000 chars · JIRA description 5,000 chars · Comments/AC 1,000 chars each · Prompt ceiling 100,000 chars. These are ~2.5× the original defaults, giving significantly richer context without approaching Tier 1 quota limits.</div></div>
+    </div>
+  </div>
+
+  <!-- GroqSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GroqSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">Configuration for the Groq (OpenAI-compatible) AI API. Kept for backward compatibility and CLI usage. Not active in the current API deployment which uses Gemini.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>ApiKey</td><td>string</td><td>""</td><td>Groq platform API key</td></tr>
+          <tr><td>Model</td><td>string</td><td>"compound-beta"</td><td>Model ID. compound-beta = 70K TPM agentic model; llama-3.1-8b-instant = fast lightweight</td></tr>
+          <tr><td>MaxTokens</td><td>int</td><td>8192</td><td>Max output tokens per request</td></tr>
+          <tr><td>TpmLimit</td><td>int</td><td>70000</td><td>Free-tier TPM cap used to budget output tokens and avoid HTTP 413</td></tr>
+          <tr><td>BaseUrl</td><td>string</td><td>https://api.groq.com/openai/v1</td><td>OpenAI-compatible endpoint base URL</td></tr>
+          <tr><td>TimeoutSeconds</td><td>int</td><td>300</td><td>Absolute ceiling for a single streaming call</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- OutputSettings -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">OutputSettings</div>
+        <div class="class-namespace">DocuGenious.Core.Configuration</div>
+      </div>
+    </div>
+    <div class="class-desc">Controls where generated PDF documents are saved on disk.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>PdfDirectory</td><td>string</td><td>"./output"</td><td>Relative or absolute path. Created automatically if it does not exist.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: CORE — INTERFACES
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="core-interfaces"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#D1FAE5;">🔌</div>
+    <div>
+      <div class="project-title">DocuGenious.Core — Interfaces</div>
+      <div class="project-desc">Contracts that decouple the API and Console projects from specific integration implementations.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- IGeminiService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-interface">interface</span>
+      <div>
+        <div class="class-name">IGeminiService</div>
+        <div class="class-namespace">DocuGenious.Core.Interfaces</div>
+      </div>
+    </div>
+    <div class="class-desc">Contract for the active AI analysis provider. Currently implemented by <code>GeminiService</code>. Swap the DI registration to change AI backends without touching any controller or orchestration code.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">AnalyzeJiraTicketsAsync</span><span class="method-return">Task&lt;AnalysisResult&gt;</span></div>
+        <div class="method-desc">Sends one or more JIRA tickets to the AI and returns a structured analysis result. Parameters: <span class="param-tag">List&lt;JiraTicket&gt; tickets</span> <span class="param-tag">DocumentationType docType</span> <span class="param-tag">string? additionalContext</span></div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">AnalyzeGitRepositoryAsync</span><span class="method-return">Task&lt;AnalysisResult&gt;</span></div>
+        <div class="method-desc">Sends Git repository metadata (commits, file contents, structure) to the AI. Parameters: <span class="param-tag">GitRepositoryInfo repoInfo</span> <span class="param-tag">DocumentationType docType</span> <span class="param-tag">string? additionalContext</span></div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">AnalyzeCombinedAsync</span><span class="method-return">Task&lt;AnalysisResult&gt;</span></div>
+        <div class="method-desc">Merges JIRA + Git context into a single prompt. Produces the richest output. Parameters: <span class="param-tag">List&lt;JiraTicket&gt; tickets</span> <span class="param-tag">GitRepositoryInfo repoInfo</span> <span class="param-tag">DocumentationType docType</span> <span class="param-tag">string? additionalContext</span></div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateConnectionAsync</span><span class="method-return">Task&lt;bool&gt;</span></div>
+        <div class="method-desc">Sends a minimal "Say OK" prompt to verify the API key is valid and the service is reachable. Returns false (not throw) for recoverable failures.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IGroqService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-interface">interface</span>
+      <div>
+        <div class="class-name">IGroqService</div>
+        <div class="class-namespace">DocuGenious.Core.Interfaces</div>
+      </div>
+    </div>
+    <div class="class-desc">Identical contract to <code>IGeminiService</code> — kept for the Console CLI project and Groq integration which remain functional. The API project registers <code>GeminiService</code> against <code>IGeminiService</code>; the Console registers <code>GroqService</code> against <code>IGroqService</code>.</div>
+    <div class="class-body">
+      <div class="alert blue"><div class="alert-icon">ℹ️</div><div>Same 4 methods as IGeminiService: <code>AnalyzeJiraTicketsAsync</code>, <code>AnalyzeGitRepositoryAsync</code>, <code>AnalyzeCombinedAsync</code>, <code>ValidateConnectionAsync</code>.</div></div>
+    </div>
+  </div>
+
+  <!-- IJiraService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-interface">interface</span>
+      <div>
+        <div class="class-name">IJiraService</div>
+        <div class="class-namespace">DocuGenious.Core.Interfaces</div>
+      </div>
+    </div>
+    <div class="class-desc">Contract for fetching JIRA ticket data. Implemented by <code>JiraService</code> using the Atlassian SDK + direct REST API v3 calls.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetTicketAsync</span><span class="method-return">Task&lt;JiraTicket&gt;</span></div>
+        <div class="method-desc">Fetches a single JIRA ticket by its key (e.g. <code>PROJ-123</code>) with all fields, comments, subtasks, and acceptance criteria.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetTicketsAsync</span><span class="method-return">Task&lt;List&lt;JiraTicket&gt;&gt;</span></div>
+        <div class="method-desc">Fetches multiple tickets in parallel. Returns partial results if some fail. Throws only if every ticket fails.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateConnectionAsync</span><span class="method-return">Task&lt;bool&gt;</span></div>
+        <div class="method-desc">Calls <code>Projects.GetProjectsAsync()</code> to verify JIRA credentials are valid.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IGitService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-interface">interface</span>
+      <div>
+        <div class="class-name">IGitService</div>
+        <div class="class-namespace">DocuGenious.Core.Interfaces</div>
+      </div>
+    </div>
+    <div class="class-desc">Contract for Git repository analysis. Handles both local paths and remote URLs. Implemented by <code>GitService</code> using LibGit2Sharp.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">AnalyzeLocalRepositoryAsync</span><span class="method-return">Task&lt;GitRepositoryInfo&gt;</span></div>
+        <div class="method-desc">Opens and reads an already-cloned repository from a local path. Parameters: <span class="param-tag">string localPath</span> <span class="param-tag">string? branch</span> <span class="param-tag">DocumentationRequest? request</span></div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CloneAndAnalyzeAsync</span><span class="method-return">Task&lt;GitRepositoryInfo&gt;</span></div>
+        <div class="method-desc">Clones a remote URL to a temp directory, analyzes it, then deletes the clone. Safe for Azure App Service (uses <code>Path.GetTempPath()</code>).</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateLocalRepositoryAsync</span><span class="method-return">Task&lt;bool&gt;</span></div>
+        <div class="method-desc">Checks whether a local path is a valid Git repository using <code>Repository.IsValid()</code>.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateRemoteRepositoryAsync</span><span class="method-return">Task&lt;RepoValidationResult&gt;</span></div>
+        <div class="method-desc">Validates a remote URL and optional branch without cloning. Uses GitHub REST API for github.com URLs; LibGit2Sharp ls-remote for others.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IPdfService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-interface">interface</span>
+      <div>
+        <div class="class-name">IPdfService</div>
+        <div class="class-namespace">DocuGenious.Core.Interfaces</div>
+      </div>
+    </div>
+    <div class="class-desc">Contract for PDF generation. Implemented by <code>PdfService</code> using the QuestPDF library.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GeneratePdfAsync</span><span class="method-return">Task&lt;string&gt;</span></div>
+        <div class="method-desc">Renders an <code>AnalysisResult</code> to a PDF file on disk and returns the full output path. Parameters: <span class="param-tag">AnalysisResult result</span> <span class="param-tag">string outputFileName</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: CORE — MODELS
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="core-models"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#EDE9FE;">📦</div>
+    <div>
+      <div class="project-title">DocuGenious.Core — Models</div>
+      <div class="project-desc">Plain data objects shared across all projects. No external dependencies.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- AnalysisResult -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">AnalysisResult</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">The central output model that the AI populates and the PDF renderer consumes. Every field maps to a section in the generated document. The AI returns this as JSON which is deserialized into this class.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Rendered As</th></tr></thead>
+        <tbody>
+          <tr><td>ExecutiveSummary</td><td>string</td><td>First section — high-level overview for non-technical readers</td></tr>
+          <tr><td>TechnicalOverview</td><td>string</td><td>Deep technical description of the system</td></tr>
+          <tr><td>ArchitectureDescription</td><td>string</td><td>Architecture Overview section — components and interactions</td></tr>
+          <tr><td>UserGuide</td><td>string</td><td>Plain-English usage instructions</td></tr>
+          <tr><td>Features</td><td>List&lt;Feature&gt;</td><td>Feature cards with name, description, usage example</td></tr>
+          <tr><td>ApiEndpoints</td><td>List&lt;ApiEndpoint&gt;</td><td>API reference table with method/path/description/body</td></tr>
+          <tr><td>Dependencies</td><td>List&lt;string&gt;</td><td>Bulleted list of libraries and packages</td></tr>
+          <tr><td>Recommendations</td><td>List&lt;string&gt;</td><td>Accent-colored bullet list of improvement suggestions</td></tr>
+          <tr><td>KnownIssues</td><td>List&lt;string&gt;</td><td>Warning-colored bullet list of known problems</td></tr>
+          <tr><td>SetupInstructions</td><td>string</td><td>Step-by-step setup guide (markdown rendered)</td></tr>
+          <tr><td>ConfigurationGuide</td><td>string</td><td>Environment variables, config file examples</td></tr>
+          <tr><td>GeneratedAt</td><td>DateTime</td><td>Timestamp shown in the cover block</td></tr>
+          <tr><td>DocumentationType</td><td>DocumentationType</td><td>Determines which sections appear in the PDF</td></tr>
+          <tr><td>SourceInfo</td><td>string</td><td>JIRA ticket keys or repository URL shown under title</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Feature -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">Feature</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Represents a single product or code feature within <code>AnalysisResult.Features</code>. Rendered as a styled card in the PDF.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Name</td><td>string</td><td>Feature title shown in bold at the top of the card</td></tr>
+          <tr><td>Description</td><td>string</td><td>Markdown-rendered description body</td></tr>
+          <tr><td>UsageExample</td><td>string</td><td>Code snippet shown in a monospace code block inside the card</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ApiEndpoint -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">ApiEndpoint</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Represents one REST API endpoint within <code>AnalysisResult.ApiEndpoints</code>. Rendered as a table row with an HTTP-verb colored badge and optional request/response body blocks.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Method</td><td>string</td><td>HTTP verb (GET / POST / PUT / PATCH / DELETE) — color-coded in PDF</td></tr>
+          <tr><td>Path</td><td>string</td><td>Route path e.g. <code>/api/documentation/generate</code></td></tr>
+          <tr><td>Description</td><td>string</td><td>What the endpoint does</td></tr>
+          <tr><td>RequestBody</td><td>string</td><td>Sample JSON request (rendered in dark terminal block)</td></tr>
+          <tr><td>ResponseBody</td><td>string</td><td>Sample JSON response (rendered in dark terminal block)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DocumentationType enum -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-enum">enum</span>
+      <div>
+        <div class="class-name">DocumentationType</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Controls which sections the AI focuses on and which sections are rendered in the output PDF. Passed through the entire pipeline from UI selection to AI prompt to PDF layout.</div>
+    <div class="class-body">
+      <div class="enum-grid">
+        <div class="enum-val">TechnicalDocumentation<small>Deep tech docs for developers. Includes setup, config, architecture.</small></div>
+        <div class="enum-val">UserGuide<small>Plain-English guide for end users. Only tickets with "done" status allowed.</small></div>
+        <div class="enum-val">ApiDocumentation<small>API reference with endpoints, methods, request/response schemas.</small></div>
+        <div class="enum-val">ArchitectureOverview<small>System design, component diagram descriptions, data flow.</small></div>
+        <div class="enum-val">FullDocumentation<small>All sections combined into one comprehensive document.</small></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DocumentationRequest -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">DocumentationRequest</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">The input payload sent from the UI or CLI to the API's <code>/api/documentation/generate</code> endpoint. Contains everything needed to orchestrate a full generation run.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>JobId</td><td>string</td><td>Unique ID (GUID) for live status polling via <code>JobStatusService</code></td></tr>
+          <tr><td>SourceType</td><td>string</td><td>"JiraOnly", "GitOnly", or "Both"</td></tr>
+          <tr><td>JiraTicketIds</td><td>List&lt;string&gt;</td><td>One or more JIRA ticket keys to fetch and analyze</td></tr>
+          <tr><td>GitRepositoryUrl</td><td>string?</td><td>Remote Git URL to clone and analyze</td></tr>
+          <tr><td>GitBranch</td><td>string?</td><td>Branch name — defaults to the repo's default branch if empty</td></tr>
+          <tr><td>DocumentationType</td><td>string</td><td>Maps to the <code>DocumentationType</code> enum value</td></tr>
+          <tr><td>OutputFileName</td><td>string?</td><td>Desired PDF file name. Auto-generated if empty.</td></tr>
+          <tr><td>AdditionalContext</td><td>string?</td><td>Free-text context appended to the AI prompt</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SourceType enum -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-enum">enum</span>
+      <div>
+        <div class="class-name">SourceType</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Determines which data sources are used for a generation request.</div>
+    <div class="class-body">
+      <div class="enum-grid">
+        <div class="enum-val">JiraOnly<small>Only JIRA tickets are fetched and analyzed</small></div>
+        <div class="enum-val">GitOnly<small>Only the Git repository is cloned and analyzed</small></div>
+        <div class="enum-val">Both<small>JIRA + Git combined — richest output</small></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GitRepositoryInfo -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GitRepositoryInfo</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">The structured output of a Git repository analysis. Populated by <code>GitService</code> and passed to the AI as context.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>RepositoryPath</td><td>string</td><td>Local path (temp dir for cloned repos)</td></tr>
+          <tr><td>RepositoryUrl</td><td>string?</td><td>Original remote URL if cloned</td></tr>
+          <tr><td>CurrentBranch</td><td>string</td><td>Branch that was checked out for analysis</td></tr>
+          <tr><td>Branches</td><td>List&lt;string&gt;</td><td>All available branches</td></tr>
+          <tr><td>RecentCommits</td><td>List&lt;GitCommit&gt;</td><td>Last 30 commits with author, date, message, changed files</td></tr>
+          <tr><td>Files</td><td>List&lt;GitFileInfo&gt;</td><td>Source files (max 20, content capped at <code>GitFileContentMaxChars</code> each — configurable, default 2,000 chars) — filtered by extension</td></tr>
+          <tr><td>Contributors</td><td>List&lt;string&gt;</td><td>Top 20 unique commit authors</td></tr>
+          <tr><td>Technologies</td><td>List&lt;string&gt;</td><td>Detected languages/frameworks (C#, TypeScript, Docker, etc.)</td></tr>
+          <tr><td>Structure</td><td>DirectoryStructure?</td><td>2-level directory tree of the repository root</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GitCommit, GitFileInfo, DirectoryStructure -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GitCommit &nbsp;·&nbsp; GitFileInfo &nbsp;·&nbsp; DirectoryStructure</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Supporting data classes used within <code>GitRepositoryInfo</code>.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Class</th><th>Key Properties</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>GitCommit</td><td>Sha, Message, Author, Date, ChangedFiles</td><td>One commit entry in the recent-commits list sent to the AI</td></tr>
+          <tr><td>GitFileInfo</td><td>Path, Extension, Size, Content</td><td>A source file's path and content (truncated to <code>GitFileContentMaxChars</code>, configurable — default 2,000 chars). Content = null for binary files or files &gt; 100 KB.</td></tr>
+          <tr><td>DirectoryStructure</td><td>Name, IsDirectory, Children</td><td>Recursive tree node representing the repo's folder layout (max 2 levels deep)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JiraTicket -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">JiraTicket &nbsp;·&nbsp; JiraComment</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Structured representation of a fetched JIRA issue. Populated by <code>JiraService</code> and passed to the AI as context text.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Key</td><td>string</td><td>JIRA issue key e.g. <code>PROJ-123</code></td></tr>
+          <tr><td>Summary</td><td>string</td><td>One-line issue title</td></tr>
+          <tr><td>Description</td><td>string</td><td>Full issue body (truncated to <code>JiraDescriptionMaxChars</code> chars before sending to AI — configurable, default 2,000)</td></tr>
+          <tr><td>Status</td><td>string</td><td>e.g. "In Progress", "Done" — checked for User Guide eligibility</td></tr>
+          <tr><td>AcceptanceCriteria</td><td>List&lt;string&gt;</td><td>Extracted from description by regex. Each item truncated to 300 chars.</td></tr>
+          <tr><td>Comments</td><td>List&lt;JiraComment&gt;</td><td>Up to 5 comments (truncated to 300 chars each) sent to AI</td></tr>
+          <tr><td>SubTasks</td><td>List&lt;string&gt;</td><td>Child ticket keys fetched via JQL <code>parent = KEY</code></td></tr>
+          <tr><td>Labels / Components</td><td>List&lt;string&gt;</td><td>Categorisation metadata from JIRA</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Validation models -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">ValidationItem &nbsp;·&nbsp; TicketValidationResult &nbsp;·&nbsp; RepoValidationResult</div>
+        <div class="class-namespace">DocuGenious.Core.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Results returned from the server-side validation step. Used by the Blazor UI to show ✅ / ⚠️ / ❌ rows in the validation dialog before generation begins.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Class</th><th>Key Properties</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>ValidationItem</td><td>Name, IsValid, IsWarning, Message</td><td>Generic pass/warn/fail result for one check</td></tr>
+          <tr><td>TicketValidationResult</td><td>TicketId, Exists, Summary, Status, Message</td><td>Per-ticket check result — confirms ticket exists and is in a usable state</td></tr>
+          <tr><td>RepoValidationResult</td><td>RepositoryUrl, Accessible, DefaultBranch, BranchExists, Message</td><td>Repository reachability check — confirms URL is accessible and branch exists</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: INTEGRATION.GEMINI
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="gemini"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#DBEAFE;">🤖</div>
+    <div>
+      <div class="project-title">DocuGenious.Integration.Gemini</div>
+      <div class="project-desc">Google Gemini AI integration via plain HttpClient REST calls. No SDK dependency.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- GeminiService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GeminiService</div>
+        <div class="class-namespace">DocuGenious.Integration.Gemini</div>
+        <div class="class-inherits">implements IGeminiService</div>
+      </div>
+    </div>
+    <div class="class-desc">Core AI integration class. Builds prompts, calls the Gemini REST API, parses the response JSON through a 6-strategy repair pipeline, validates output quality, and returns a structured <code>AnalysisResult</code>. Handles rate limiting with automatic retry.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CallGeminiAsync</span><span class="method-return">Task&lt;string&gt; — private</span></div>
+        <div class="method-desc">Low-level HTTP POST to <code>/v1beta/models/{model}:generateContent</code>. Reads <code>candidates[0].content.parts[0].text</code> from the response. On 429, embeds the <code>retryDelay</code> value from Gemini's JSON error body into the exception message for the caller to act on.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CallAndParseAsync</span><span class="method-return">Task&lt;AnalysisResult&gt; — private</span></div>
+        <div class="method-desc">Orchestrates: truncate prompt → call Gemini → parse JSON → validate quality → retry on 429 (up to 3×) or 5xx (backoff: 1.5s / 4s / 9s). Only throws after all retries are exhausted.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ParseAnalysisResult</span><span class="method-return">AnalysisResult — private</span></div>
+        <div class="method-desc">Runs the 6-strategy JSON extraction pipeline on the raw AI text: ① raw text ② ```json fence ③ generic fence ④ outermost braces ⑤ truncated-JSON repair ⑥ nested-object flattening. Falls back to regex partial extraction if all fail.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateOutputQuality</span><span class="method-return">void — private</span></div>
+        <div class="method-desc">Scores the result out of 100 points. Deducts points for empty or thin sections (e.g. executiveSummary &lt; 30 words = −10 pts). Logs warnings but does not throw — a partial result is better than nothing.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">BuildJiraContext / BuildGitContext</span><span class="method-return">string — private instance</span></div>
+        <div class="method-desc">Assembles human-readable context strings from <code>JiraTicket</code> / <code>GitRepositoryInfo</code> objects. Applies all truncation limits read from <code>_settings.Truncation</code>: <code>JiraDescriptionMaxChars</code>, <code>JiraAcceptanceCriteriaMaxChars</code>, <code>JiraCommentMaxChars</code>, <code>GitCommitMessageMaxChars</code>, <code>GitFileContentMaxChars</code> — all fully configurable via <code>appsettings.json</code>.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">NormalizeResult / RedistributeSections</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc"><code>NormalizeResult</code> cleans placeholder text and empty arrays. <code>RedistributeSections</code> scans the executive summary for <code>## Heading</code> markers and routes them to their correct <code>AnalysisResult</code> fields.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ExtractRetryDelay / ParseRetryAfterSeconds</span><span class="method-return">string / double? — private static</span></div>
+        <div class="method-desc">Parses Gemini's <code>error.details[].retryDelay</code> JSON field (e.g. <code>"4.197s"</code>) and embeds it in the exception message. <code>ParseRetryAfterSeconds</code> handles formats: <code>[retry after Xs]</code>, <code>Please retry in X.Xs.</code>, <code>try again in Xm Y.Ys</code>.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">TruncateIfNeeded</span><span class="method-return">string — private instance</span></div>
+        <div class="method-desc">Hard-caps the full assembled prompt at <code>PromptMaxChars</code> characters (configurable via <code>appsettings.json</code>, default 80,000 / currently 100,000 chars ≈ 25,000 tokens) as a final safety net. Appends <code>[Source data truncated]</code> so the AI knows data was cut.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FlexibleJsonConverters -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">FlexibleApiEndpointListConverter &nbsp;·&nbsp; FlexibleFeatureListConverter &nbsp;·&nbsp; FlexibleStringListConverter</div>
+        <div class="class-namespace">DocuGenious.Integration.Gemini</div>
+        <div class="class-inherits">extends JsonConverter&lt;T&gt;</div>
+      </div>
+    </div>
+    <div class="class-desc">Tolerant JSON converters that handle the unpredictable output shapes that LLMs sometimes produce. Applied via <code>JsonSerializerOptions</code> during response deserialization.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Converter</th><th>Problem Solved</th></tr></thead>
+        <tbody>
+          <tr><td>FlexibleApiEndpointListConverter</td><td>Handles <code>apiEndpoints</code> as an array, a single object, a plain string, or a <code>"GET /path – desc"</code> formatted line</td></tr>
+          <tr><td>FlexibleFeatureListConverter</td><td>Handles <code>features</code> as nested objects, a single item (not wrapped in array), or plain strings</td></tr>
+          <tr><td>FlexibleStringListConverter</td><td>Handles <code>dependencies</code>/<code>recommendations</code>/<code>knownIssues</code> as arrays, newline-separated strings, or objects (flattened to "key: value" pairs)</td></tr>
+        </tbody>
+      </table>
+      <div class="alert amber" style="margin-top:10px;"><div class="alert-icon">⚠️</div><div>These converters exist because Gemini (like all LLMs) occasionally returns a field as a string when an array is expected, or nests objects one level too deep. Without them, deserialization would fail silently.</div></div>
+    </div>
+  </div>
+
+  <!-- ConverterHelpers -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-static">static class</span>
+      <div>
+        <div class="class-name">ConverterHelpers</div>
+        <div class="class-namespace">DocuGenious.Integration.Gemini</div>
+      </div>
+    </div>
+    <div class="class-desc">Shared utility used by all three <code>FlexibleJson</code> converters.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ReadScalarOrSkip</span><span class="method-return">string?</span></div>
+        <div class="method-desc">Reads any scalar JSON value (string, number, boolean) as a string, or skips non-scalar tokens. Used to safely extract text from unexpected JSON shapes.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: INTEGRATION.JIRA
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="jira"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FEF3C7;">📋</div>
+    <div>
+      <div class="project-title">DocuGenious.Integration.Jira</div>
+      <div class="project-desc">Atlassian JIRA ticket fetching via SDK + direct REST API v3.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">JiraService</div>
+        <div class="class-namespace">DocuGenious.Integration.Jira</div>
+        <div class="class-inherits">implements IJiraService</div>
+      </div>
+    </div>
+    <div class="class-desc">Fetches JIRA ticket data using a combination of the Atlassian .NET SDK (for issue fields and comments) and direct HTTP calls to JIRA REST API v3 (for subtasks — the SDK uses a deprecated v2 subtask endpoint). Extracts acceptance criteria from ticket descriptions using regex patterns.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetTicketAsync</span><span class="method-return">Task&lt;JiraTicket&gt;</span></div>
+        <div class="method-desc">Fetches one ticket. Calls <code>Issues.GetIssueAsync()</code> via SDK, then <code>FetchSubTasksAsync()</code> via REST v3. Extracts acceptance criteria via <code>ExtractAcceptanceCriteria()</code>. Wraps SDK errors with <code>ExtractJiraApiError()</code> for readable messages.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetTicketsAsync</span><span class="method-return">Task&lt;List&lt;JiraTicket&gt;&gt;</span></div>
+        <div class="method-desc">Fetches multiple tickets in sequence. Collects per-ticket exceptions and continues. Returns partial results. Throws only if every single ticket fails — prevents passing empty data to the AI.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">FetchSubTasksAsync</span><span class="method-return">Task&lt;List&lt;string&gt;&gt; — private</span></div>
+        <div class="method-desc">Calls <code>POST /rest/api/3/issue/search</code> with JQL <code>parent = {key}</code>. Parses the JSON response to extract subtask keys. Uses direct HTTP because the Atlassian SDK's subtask method targets the removed v2 endpoint.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ExtractAcceptanceCriteria</span><span class="method-return">List&lt;string&gt; — private static</span></div>
+        <div class="method-desc">Regex-based extractor that finds acceptance criteria blocks in JIRA description text. Looks for sections headed "Acceptance Criteria", "AC:", or "Given/When/Then" patterns. Returns each criterion as a list item.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ExtractJiraApiError</span><span class="method-return">string — private static</span></div>
+        <div class="method-desc">Parses the JSON error body embedded in Atlassian SDK exceptions. Extracts the <code>errorMessages</code> array for a readable error string instead of exposing raw HTTP bodies to the user.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: INTEGRATION.GIT
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="git"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#D1FAE5;">🗂️</div>
+    <div>
+      <div class="project-title">DocuGenious.Integration.Git</div>
+      <div class="project-desc">Git repository cloning and analysis using LibGit2Sharp. Cloud-safe with automatic temp-dir cleanup.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GitService</div>
+        <div class="class-namespace">DocuGenious.Integration.Git</div>
+        <div class="class-inherits">implements IGitService</div>
+      </div>
+    </div>
+    <div class="class-desc">Clones remote repositories to a safe writable directory, analyzes commits, file contents, contributors, and detected technologies, then returns a <code>GitRepositoryInfo</code> object. Always cleans up the cloned directory in a <code>finally</code> block — even on error.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CloneAndAnalyzeAsync</span><span class="method-return">Task&lt;GitRepositoryInfo&gt;</span></div>
+        <div class="method-desc">Resolves the clone base directory (configured path or system temp), creates a unique <code>{repoName}_{8-char-guid}</code> subdirectory, clones with PAT authentication, calls <code>AnalyzeLocalRepositoryAsync()</code>, then deletes the clone in a <code>try/finally</code>.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">AnalyzeLocalRepositoryAsync</span><span class="method-return">Task&lt;GitRepositoryInfo&gt;</span></div>
+        <div class="method-desc">Opens a local repository, optionally checks out a branch, then collects: last 30 commits, top 20 contributors, source files (filtered by extension, max 20, content capped at <code>GitFileContentMaxChars</code>), detected technologies, and a 2-level directory tree.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateRemoteRepositoryAsync</span><span class="method-return">Task&lt;RepoValidationResult&gt;</span></div>
+        <div class="method-desc">For github.com URLs, uses the GitHub REST API with Bearer auth to check accessibility and branch existence. For other URLs, uses LibGit2Sharp <code>ls-remote</code>. Returns details on default branch and whether the requested branch exists.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ResolveCloneBaseDirectory</span><span class="method-return">string — private</span></div>
+        <div class="method-desc">Priority: ① configured <code>CloneDirectory</code> (if non-empty and writable) → ② <code>Path.GetTempPath()/docugenious-repos</code>. The fallback makes the service work on Azure App Service, Docker, and Linux without any configuration.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">TryDeleteDirectory</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc">Resets <code>FileAttributes.Normal</code> on all files before deleting (LibGit2Sharp marks <code>.git</code> object files read-only). Then calls <code>Directory.Delete(path, recursive: true)</code>.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">DetectTechnologies</span><span class="method-return">List&lt;string&gt; — private static</span></div>
+        <div class="method-desc">Maps file extensions to technology names (e.g. <code>.cs</code> → "C#", <code>.ts</code> → "TypeScript"). Also detects frameworks by well-known file names (e.g. <code>Dockerfile</code> → "Docker", <code>*.csproj</code> → ".NET").</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ScanFiles</span><span class="method-return">List&lt;GitFileInfo&gt; — private</span></div>
+        <div class="method-desc">Walks source files filtered by <code>DefaultExtensions</code>. Skips <code>SkippedDirectories</code> (node_modules, .git, bin, obj, dist, etc.). Reads content only for text files under 100 KB. Returns at most 20 files.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: INTEGRATION.PDF
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="pdf"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FCE7F3;">📄</div>
+    <div>
+      <div class="project-title">DocuGenious.Integration.Pdf</div>
+      <div class="project-desc">Professional PDF generation using QuestPDF with a full markdown renderer.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">PdfService</div>
+        <div class="class-namespace">DocuGenious.Integration.Pdf</div>
+        <div class="class-inherits">implements IPdfService</div>
+      </div>
+    </div>
+    <div class="class-desc">Renders an <code>AnalysisResult</code> into a branded, print-ready A4 PDF using QuestPDF's fluent API. Contains a full markdown block parser — it converts headings, bullets, numbered lists, code blocks, blockquotes, and inline bold/italic/code into styled QuestPDF elements.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GeneratePdfAsync</span><span class="method-return">Task&lt;string&gt;</span></div>
+        <div class="method-desc">Entry point. Creates the output directory, sanitizes the file name, builds the QuestPDF Document (A4, 40px margin), calls header/content/footer composers, writes to disk, returns the full path.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ComposeContent</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc">Conditionally renders each section (Executive Summary, Technical Overview, Architecture, Features, User Guide, Setup, Config, API Endpoints, Dependencies, Recommendations, Known Issues) only when the corresponding <code>AnalysisResult</code> field is non-empty.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">RenderMarkdown</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc">Parses raw markdown text into typed blocks (<code>MdBlock</code>: H1–H4, Paragraph, Bullet, Numbered, CodeBlock, HRule, BlockQuote) and renders each using matching QuestPDF styling. Falls back to JSON→markdown conversion if the field contains raw JSON.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">RenderInlineText</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc">Handles inline markdown within a single paragraph: <code>**bold**</code>, <code>*italic*</code>, <code>__bold__</code>, <code>_italic_</code>, <code>`code`</code>. Uses a fast path (no spans) when no inline formatting is detected.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ComposeApiSection</span><span class="method-return">void — private static</span></div>
+        <div class="method-desc">Renders the API endpoints table with color-coded HTTP verb badges (GET=green, POST=blue, PUT=orange, PATCH=purple, DELETE=red). Expands request/response bodies in dark terminal blocks below each row.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ConvertJsonToMarkdown</span><span class="method-return">string — private static</span></div>
+        <div class="method-desc">Safety net: if an <code>AnalysisResult</code> field contains valid JSON (e.g. the AI wrapped its response in a nested object), converts it to readable markdown prose rather than rendering raw JSON as a code block.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: INTEGRATION.GROQ
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="groq"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#EDE9FE;">⚡</div>
+    <div>
+      <div class="project-title">DocuGenious.Integration.Groq</div>
+      <div class="project-desc">Groq AI integration via OpenAI-compatible SDK. Used by the Console CLI project. Not active in the API (which uses Gemini).</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GroqService</div>
+        <div class="class-namespace">DocuGenious.Integration.Groq</div>
+        <div class="class-inherits">implements IGroqService</div>
+      </div>
+    </div>
+    <div class="class-desc">Identical architectural pattern to <code>GeminiService</code> but uses the OpenAI .NET SDK pointed at the Groq endpoint. Includes a tighter token budget (6,000 TPM for most free-tier models) and prompt truncation at 14,000 chars.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CallOpenAiAsync</span><span class="method-return">Task&lt;string&gt; — private</span></div>
+        <div class="method-desc">Uses <code>OpenAI.ChatClient</code> (non-streaming) to call the Groq endpoint. Handles 429 (rate limit), 413 (prompt too large), 401 (bad key), and 5xx errors. Budgets output tokens based on TPM limit to avoid HTTP 413.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ParseAnalysisResult / ValidateOutputQuality / NormalizeResult</span><span class="method-return">private</span></div>
+        <div class="method-desc">Same 6-strategy JSON repair pipeline and quality scoring as <code>GeminiService</code>. Kept in sync manually since the two projects are intentionally independent (no shared code project between them).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">FlexibleJsonConverters (Groq)</div>
+        <div class="class-namespace">DocuGenious.Integration.Groq</div>
+      </div>
+    </div>
+    <div class="class-desc">Identical to the Gemini version — same three converters (<code>FlexibleApiEndpointListConverter</code>, <code>FlexibleFeatureListConverter</code>, <code>FlexibleStringListConverter</code>) with only the namespace changed. Duplicated intentionally to keep Integration.Groq self-contained.</div>
+    <div class="class-body">
+      <div class="alert blue"><div class="alert-icon">ℹ️</div><div>See the Gemini section above for full converter descriptions. Behavior is identical.</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: API — PROGRAM / STARTUP
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="api-program"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FEF3C7;">🚀</div>
+    <div>
+      <div class="project-title">DocuGenious.Api — Startup</div>
+      <div class="project-desc">ASP.NET Core Web API entry point. Wires all services and configures CORS for Blazor.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-static">top-level Program.cs</span>
+      <div>
+        <div class="class-name">API Bootstrap — Program.cs</div>
+        <div class="class-namespace">DocuGenious.Api</div>
+      </div>
+    </div>
+    <div class="class-desc">Configures the DI container and middleware pipeline for the ASP.NET Core API host.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Registration</th><th>Lifetime</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>AppSettings</td><td>Singleton</td><td>Bound from IConfiguration; injected into all service constructors</td></tr>
+          <tr><td>JobStatusService</td><td>Singleton</td><td>In-memory concurrent dictionary; must be singleton for cross-request access</td></tr>
+          <tr><td>IJiraService → JiraService</td><td>Scoped</td><td>Atlassian SDK client per request</td></tr>
+          <tr><td>IGitService → GitService</td><td>Scoped</td><td>LibGit2Sharp per request; clone directory unique per call</td></tr>
+          <tr><td>IGeminiService → GeminiService</td><td>Singleton</td><td>Single HttpClient instance reused across requests (best practice)</td></tr>
+          <tr><td>IPdfService → PdfService</td><td>Scoped</td><td>QuestPDF document builder per request</td></tr>
+        </tbody>
+      </table>
+      <div class="alert blue" style="margin-top:10px;"><div class="alert-icon">🌐</div><div><strong>CORS Policy "BlazorPolicy"</strong>: Always allows localhost ports 7170, 5138, 7002, 5002, 7001, 5001. Allows configured origins from <code>Cors:AllowedOrigins</code>. In Development only: allows any <code>*.devtunnels.ms</code> origin for VS Dev Tunnel testing.</div></div>
+    </div>
+  </div>
+
+  <!-- JobStatusService -->
+  <a class="anchor" id="api-jobstatus"></a>
+  <div class="class-card" style="margin-top:20px;">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">sealed class</span>
+      <div>
+        <div class="class-name">JobStatusService</div>
+        <div class="class-namespace">DocuGenious.Api.Services</div>
+      </div>
+    </div>
+    <div class="class-desc">In-memory store for tracking the real-time status of in-flight generation jobs. The Blazor UI polls <code>/api/documentation/status/{jobId}</code> every 1.5 seconds to update the spinner message shown to the user. Entries expire after 30 minutes to prevent memory leaks.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">Update</span><span class="method-return">void</span></div>
+        <div class="method-desc">Creates or updates the status for a given <code>jobId</code>. Resets the 30-minute expiration window on every update. Parameters: <span class="param-tag">string jobId</span> <span class="param-tag">string status</span></div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">Get</span><span class="method-return">string?</span></div>
+        <div class="method-desc">Returns the current status string, or <code>null</code> if the job ID is unknown or the entry has expired.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">Remove</span><span class="method-return">void</span></div>
+        <div class="method-desc">Explicitly removes a job entry when generation completes. Keeps memory clean rather than waiting for expiry.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">PurgeExpired</span><span class="method-return">void</span></div>
+        <div class="method-desc">Scans the <code>ConcurrentDictionary</code> and removes all entries whose <code>ExpiresAt</code> has passed. Called opportunistically on <code>Get()</code> to avoid unbounded growth.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLLERS -->
+  <a class="anchor" id="api-controllers"></a>
+  <div class="project-header" style="margin-top:28px;">
+    <div class="project-icon" style="background:#DBEAFE;">🎮</div>
+    <div>
+      <div class="project-title">DocuGenious.Api — Controllers</div>
+      <div class="project-desc">5 REST controllers that expose all DocuGenious functionality over HTTP.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- DocumentationController -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">controller</span>
+      <div>
+        <div class="class-name">DocumentationController</div>
+        <div class="class-namespace">DocuGenious.Api.Controllers &nbsp;·&nbsp; Route: /api/documentation</div>
+        <div class="class-inherits">extends ControllerBase</div>
+      </div>
+    </div>
+    <div class="class-desc">The primary orchestration controller. Runs the full generation pipeline: validate → fetch JIRA → clone/analyze Git → call Gemini AI → generate PDF. Updates job status at each step so the UI spinner shows live progress.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Endpoint</th><th>Method</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /generate</code></td><td>GenerateAsync</td><td>Full pipeline: validates request → Step 1 fetch JIRA → Step 2 clone Git → Step 3 Gemini AI → Step 4 PDF → returns file name. Updates <code>JobStatusService</code> with step messages throughout.</td></tr>
+          <tr><td><code>GET /status/{jobId}</code></td><td>GetStatusAsync</td><td>Returns current status string for a running job. Returns HTTP 204 (No Content) when job is complete or not found — the UI treats 204 as "done".</td></tr>
+          <tr><td><code>GET /download/{fileName}</code></td><td>DownloadAsync</td><td>Sanitizes the file name (prevents path traversal attacks), locates the PDF in the output directory, serves it as <code>application/pdf</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GeminiController -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">controller</span>
+      <div>
+        <div class="class-name">GeminiController</div>
+        <div class="class-namespace">DocuGenious.Api.Controllers &nbsp;·&nbsp; Route: /api/gemini</div>
+        <div class="class-inherits">extends ControllerBase</div>
+      </div>
+    </div>
+    <div class="class-desc">Direct access to the Gemini AI service for standalone analysis without PDF generation. Used by the validation step and for testing the AI connection.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /validate</code></td><td>Calls <code>ValidateConnectionAsync()</code> — used by the Blazor validation dialog to confirm the AI key is working</td></tr>
+          <tr><td><code>POST /analyse/jira</code></td><td>Analyzes JIRA tickets without generating a PDF — returns raw <code>AnalysisResult</code> JSON</td></tr>
+          <tr><td><code>POST /analyse/git</code></td><td>Analyzes a Git repository without generating a PDF</td></tr>
+          <tr><td><code>POST /analyse/combined</code></td><td>Analyzes JIRA + Git combined without generating a PDF</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JiraController -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">controller</span>
+      <div>
+        <div class="class-name">JiraController</div>
+        <div class="class-namespace">DocuGenious.Api.Controllers &nbsp;·&nbsp; Route: /api/jira</div>
+        <div class="class-inherits">extends ControllerBase</div>
+      </div>
+    </div>
+    <div class="class-desc">Exposes JIRA ticket operations. The validation endpoints are called by the Blazor UI's pre-generation check to confirm tickets exist and are in the correct state.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /ticket/{ticketId}</code></td><td>Fetches and returns a single JIRA ticket as JSON</td></tr>
+          <tr><td><code>POST /tickets</code></td><td>Fetches multiple tickets by key list</td></tr>
+          <tr><td><code>POST /validate-tickets</code></td><td>Validates ticket IDs — checks existence, fetches summary and status. Used by the Blazor validation dialog. Body: <code>{ "ticketIds": ["PROJ-1"] }</code></td></tr>
+          <tr><td><code>GET /validate</code></td><td>Tests JIRA connection — confirms credentials are valid</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GitController -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">controller</span>
+      <div>
+        <div class="class-name">GitController</div>
+        <div class="class-namespace">DocuGenious.Api.Controllers &nbsp;·&nbsp; Route: /api/git</div>
+        <div class="class-inherits">extends ControllerBase</div>
+      </div>
+    </div>
+    <div class="class-desc">Exposes Git repository operations. The <code>validate-remote</code> endpoint is called before cloning to give the user immediate feedback on whether the URL and branch are accessible.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /validate-remote</code></td><td>Validates a remote URL + branch without cloning. Returns <code>RepoValidationResult</code> with accessibility and default branch info.</td></tr>
+          <tr><td><code>POST /analyse/local</code></td><td>Analyzes a local repository path — returns <code>GitRepositoryInfo</code> JSON</td></tr>
+          <tr><td><code>POST /analyse/remote</code></td><td>Clones and analyzes a remote repository — returns <code>GitRepositoryInfo</code> JSON</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- GroqController -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">controller</span>
+      <div>
+        <div class="class-name">GroqController</div>
+        <div class="class-namespace">DocuGenious.Api.Controllers &nbsp;·&nbsp; Route: /api/groq</div>
+        <div class="class-inherits">extends ControllerBase</div>
+      </div>
+    </div>
+    <div class="class-desc">Legacy controller kept for backward-compatibility. Currently commented out in the codebase since the API now uses Gemini. Route kept as <code>/api/groq/*</code> intentionally to avoid breaking any existing API clients that may be calling it.</div>
+    <div class="class-body">
+      <div class="alert amber"><div class="alert-icon">⚠️</div><div>This controller is <strong>commented out</strong> in the current build. It would provide the same 4 endpoints as <code>GeminiController</code> but targeting the Groq AI service.</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: BLAZOR — SERVICES
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="blazor-services"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FCE7F3;">🌐</div>
+    <div>
+      <div class="project-title">DocuGenious.Blazor — Services</div>
+      <div class="project-desc">Client-side services for API communication, validation, and file persistence in the Blazor WASM app.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- DocumentationApiService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">DocumentationApiService</div>
+        <div class="class-namespace">DocuGenious.Blazor.Services</div>
+      </div>
+    </div>
+    <div class="class-desc">The Blazor UI's HTTP client wrapper. All API calls from the UI go through this service. Timeout is set to 3 minutes to cover the full JIRA → Gemini → PDF pipeline duration.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GenerateDocumentAsync</span><span class="method-return">Task&lt;GenerateResult&gt;</span></div>
+        <div class="method-desc"><code>POST /api/documentation/generate</code>. Extracts a friendly error message from the JSON response body on failure. Returns a <code>GenerateResult</code> with success flag, file name, and error text.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetJobStatusAsync</span><span class="method-return">Task&lt;string?&gt;</span></div>
+        <div class="method-desc"><code>GET /api/documentation/status/{jobId}</code>. Called every 1.5 seconds by the polling loop. Returns the status string or <code>null</code> when the job is done (HTTP 204).</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">DownloadPdfAsync</span><span class="method-return">Task&lt;byte[]&gt;</span></div>
+        <div class="method-desc"><code>GET /api/documentation/download/{fileName}</code>. Returns raw PDF bytes which the UI converts to a base64 download via <code>downloadFileFromBase64</code> JS interop.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateJiraAsync / ValidateGeminiAsync</span><span class="method-return">Task&lt;bool&gt;</span></div>
+        <div class="method-desc">Called during the pre-generation validation step to confirm JIRA credentials and Gemini API key are working before starting the generation pipeline.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ValidationService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">ValidationService</div>
+        <div class="class-namespace">DocuGenious.Blazor.Services</div>
+      </div>
+    </div>
+    <div class="class-desc">Runs all pre-generation checks and feeds live results back to the validation dialog via a callback. Combines fast local checks (regex format validation) with async server-side checks (JIRA ticket existence, Git repo accessibility).</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateAsync</span><span class="method-return">Task&lt;(List&lt;ValidationRow&gt;, bool canProceed)&gt;</span></div>
+        <div class="method-desc">Runs all checks in sequence, calling <code>onRowUpdated</code> callback after each one so the UI can show ✅/⚠️/❌ rows in real time. Returns the full row list and whether generation should proceed.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">Regex patterns (source-generated)</span><span class="method-return">static</span></div>
+        <div class="method-desc">
+          <span class="param-tag">TicketFormatRegex</span> → <code>^[A-Z][A-Z0-9_]+-\d+$</code> (e.g. PROJ-123)<br/>
+          <span class="param-tag">GitUrlRegex</span> → must start with https://, git@, or git://<br/>
+          <span class="param-tag">BranchNameRegex</span> → valid Git branch name characters<br/>
+          <span class="param-tag">InvalidFileNameRegex</span> → rejects OS-illegal characters
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FileStorageService -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">FileStorageService</div>
+        <div class="class-namespace">DocuGenious.Blazor.Services</div>
+      </div>
+    </div>
+    <div class="class-desc">Persists the list of generated PDF files to <code>wwwroot/data/files.json</code> so the file history panel survives page refreshes. Registered as a singleton so the in-memory list is shared across all components.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">GetFilesAsync</span><span class="method-return">Task&lt;List&lt;FileRecord&gt;&gt;</span></div>
+        <div class="method-desc">Reads and deserializes <code>files.json</code>. Returns an empty list if the file doesn't exist yet.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">SaveFilesAsync</span><span class="method-return">Task</span></div>
+        <div class="method-desc">Serializes and writes the file record list back to <code>files.json</code>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: BLAZOR — MODELS
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="blazor-models"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#D1FAE5;">📋</div>
+    <div>
+      <div class="project-title">DocuGenious.Blazor — Models</div>
+      <div class="project-desc">Client-side DTOs and UI helper types used in the Blazor WASM frontend.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <!-- BlazorModels -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">GenerateRequest &nbsp;·&nbsp; GenerateResult &nbsp;·&nbsp; ConnectionResult</div>
+        <div class="class-namespace">DocuGenious.Blazor.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Client-side DTOs for the generation API call.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Class</th><th>Key Properties</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>GenerateRequest</td><td>SourceType, JiraTicketIds, GitRepositoryUrl, GitBranch, DocumentationType, OutputFileName, AdditionalContext, JobId</td><td>Serialized to JSON and POSTed to <code>/api/documentation/generate</code></td></tr>
+          <tr><td>GenerateResult</td><td>Success, FilePath, FileName, Error</td><td>Deserialized from the API response. Drives the success/error state in the UI modal.</td></tr>
+          <tr><td>ConnectionResult</td><td>Connected, Message</td><td>Result of JIRA or Gemini validation checks</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SourceTypes / DocumentationTypes -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-static">static class</span>
+      <div>
+        <div class="class-name">SourceTypes &nbsp;·&nbsp; DocumentationTypes</div>
+        <div class="class-namespace">DocuGenious.Blazor.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Provide the <code>Options</code> lists that populate the dropdown menus in the UI. Changing these controls what appears in the "Choose an option" and "Document Type" selects.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Class</th><th>Options</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td>SourceTypes</td><td>JiraOnly, GitOnly, Both</td><td>Maps to <code>SourceType</code> enum values</td></tr>
+          <tr><td>DocumentationTypes</td><td>TechnicalDocumentation, UserGuide</td><td>Only these two are shown in the UI — others are available via API directly</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DropdownOption / FileRecord -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-record">record</span>
+      <div>
+        <div class="class-name">DropdownOption &nbsp;·&nbsp; FileRecord</div>
+        <div class="class-namespace">DocuGenious.Blazor.Models</div>
+      </div>
+    </div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Type</th><th>Properties</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>DropdownOption (record)</td><td>Value, Label</td><td>Immutable value/label pair used by <code>SourceTypes</code> and <code>DocumentationTypes</code> to render <code>&lt;option&gt;</code> elements</td></tr>
+          <tr><td>FileRecord (class)</td><td>FileName, CreatedOn</td><td>One entry in the file history list. Persisted to <code>files.json</code> by <code>FileStorageService</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ValidationModels -->
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">ValidationRow</div>
+        <div class="class-namespace">DocuGenious.Blazor.Models</div>
+      </div>
+    </div>
+    <div class="class-desc">Represents one row in the pre-generation validation dialog. Updated live via the <code>onRowUpdated</code> callback as each check completes.</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>Label</td><td>string</td><td>Human-readable check name shown in the dialog (e.g. "JIRA Connection", "Ticket DGN-42")</td></tr>
+          <tr><td>Status</td><td>ValidationStatus</td><td>Checking / Pass / Warn / Fail — controls the icon (⏳✅⚠️❌) and CSS class</td></tr>
+          <tr><td>Message</td><td>string?</td><td>Optional detail shown below the label (e.g. "Ticket not found" or "Status: Done")</td></tr>
+        </tbody>
+      </table>
+      <div class="enum-grid" style="margin-top:10px;">
+        <div class="enum-val">Checking<small>⏳ In progress</small></div>
+        <div class="enum-val">Pass<small>✅ Check succeeded</small></div>
+        <div class="enum-val">Warn<small>⚠️ Passed with warning</small></div>
+        <div class="enum-val">Fail<small>❌ Check failed — blocks generation</small></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: BLAZOR — PAGES
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="blazor-pages"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FEF3C7;">🖥️</div>
+    <div>
+      <div class="project-title">DocuGenious.Blazor — Pages</div>
+      <div class="project-desc">The single-page Blazor UI at route <code>/</code>.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">Blazor Component</span>
+      <div>
+        <div class="class-name">Home.razor</div>
+        <div class="class-namespace">DocuGenious.Blazor.Pages &nbsp;·&nbsp; Route: /</div>
+      </div>
+    </div>
+    <div class="class-desc">The entire DocuGenious web UI in a single Razor component. Manages the complete generation workflow from form input through to PDF download. Uses a modal dialog with 4 states (<code>Validating</code>, <code>Generating</code>, <code>Success</code>, <code>Error</code>).</div>
+    <div class="class-body">
+      <table class="props-table">
+        <thead><tr><th>Field / Property</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>_sourceType, _docType, _repoUrl, _branch, _additionalContext, _outputFileName</td><td>Bound to form inputs. <code>_docType</code> defaults to <code>"TechnicalDocumentation"</code>.</td></tr>
+          <tr><td>_ticketInput, _ticketIds</td><td>Tag-input pattern: user types in <code>_ticketInput</code>, presses Enter/comma to add to <code>_ticketIds</code> list</td></tr>
+          <tr><td>_state (UiState enum)</td><td>Controls which modal panel is shown: Form / Validating / Generating / Success / Error</td></tr>
+          <tr><td>CanSubmit</td><td>Computed property: source type selected + tickets entered or typed + repo URL filled → enables the Generate button</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:12px;">
+        <div class="method-item">
+          <div class="method-sig"><span class="method-name">StartValidation</span><span class="method-return">async Task</span></div>
+          <div class="method-desc">Flushes any typed-but-not-confirmed ticket from <code>_ticketInput</code>, opens the validation dialog, runs <code>ValidationService.ValidateAsync()</code> with live row updates, then calls <code>Generate()</code> if all checks pass.</div>
+        </div>
+        <div class="method-item">
+          <div class="method-sig"><span class="method-name">Generate</span><span class="method-return">async Task</span></div>
+          <div class="method-desc">Posts the <code>GenerateRequest</code> to the API with a unique <code>JobId</code>, starts the status polling loop (<code>PollStatusAsync</code>) in the background, awaits the result, then transitions to Success or Error state.</div>
+        </div>
+        <div class="method-item">
+          <div class="method-sig"><span class="method-name">PollStatusAsync</span><span class="method-return">async Task</span></div>
+          <div class="method-desc">Runs every 1.5 seconds while generation is in progress. Calls <code>GetJobStatusAsync()</code> and updates <code>_statusMessage</code> to drive the spinner text. Cancelled via <code>CancellationTokenSource</code> when generation completes.</div>
+        </div>
+        <div class="method-item">
+          <div class="method-sig"><span class="method-name">CloseDialog / ResetForm</span><span class="method-return">void</span></div>
+          <div class="method-desc"><code>CloseDialog</code> hides the modal. Calls <code>ResetForm()</code> on Success or validation failure (fresh start), but not on Error (keeps inputs so user can fix and retry). <code>ResetForm</code> resets all fields — <code>_docType</code> resets to <code>"TechnicalDocumentation"</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PROJECT: CONSOLE CLI
+  ══════════════════════════════════════════════ -->
+  <a class="anchor" id="console"></a>
+  <div class="project-header">
+    <div class="project-icon" style="background:#FEF3C7;">💻</div>
+    <div>
+      <div class="project-title">DocuGenious.Console — CLI</div>
+      <div class="project-desc">Interactive terminal app using Spectre.Console. Uses Groq AI instead of Gemini.</div>
+    </div>
+    <div class="project-divider"></div>
+  </div>
+
+  <div class="class-card">
+    <div class="class-card-header">
+      <span class="class-type-badge badge-class">class</span>
+      <div>
+        <div class="class-name">CliHandler</div>
+        <div class="class-namespace">DocuGenious.Console.Cli</div>
+      </div>
+    </div>
+    <div class="class-desc">The main CLI orchestrator. Provides an interactive Spectre.Console loop where users can generate documents, see live progress spinners, and generate multiple documents in one session. Uses <code>IGroqService</code> (Groq AI) rather than Gemini — independent of the API project's AI choice.</div>
+    <div class="class-body">
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">RunAsync</span><span class="method-return">Task</span></div>
+        <div class="method-desc">Main loop: print banner → validate services → collect request → process → ask "generate another?" → repeat. Handles top-level exceptions with formatted Spectre error panels.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ValidateServicesAsync</span><span class="method-return">Task</span></div>
+        <div class="method-desc">Shows a live spinner ("Connecting to Gemini AI...") while calling <code>ValidateConnectionAsync()</code>. Exits the process with code 1 if the AI service is unreachable.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">CollectRequestAsync</span><span class="method-return">Task&lt;DocumentationRequest&gt;</span></div>
+        <div class="method-desc">Interactive prompts using Spectre.Console <code>SelectionPrompt</code> and <code>TextPrompt</code>. Collects source type, JIRA ticket IDs, Git URL and branch, document type, and output file name.</div>
+      </div>
+      <div class="method-item">
+        <div class="method-sig"><span class="method-name">ProcessRequestAsync</span><span class="method-return">Task</span></div>
+        <div class="method-desc">Executes the full pipeline with a live progress display. Fetches JIRA, clones/analyzes Git, calls Groq AI, generates PDF. Shows each step completing in the terminal with timing information.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="margin-top:48px;padding-top:18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:#8A9BB0;">
+    <span>DocuGenious — Class Reference Documentation</span>
+    <span>Generated May 2026 · 8 Projects · ~41 Classes · GitHub Linked</span>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ── Active nav highlight on scroll ──────────────────────────────────────────
+const anchors = document.querySelectorAll('.anchor');
+const navItems = document.querySelectorAll('.nav-item');
+window.addEventListener('scroll', () => {
+  let current = '';
+  anchors.forEach(a => { if (window.scrollY >= a.offsetTop - 80) current = a.id; });
+  navItems.forEach(n => {
+    n.classList.remove('active');
+    if (n.getAttribute('href') === '#' + current) n.classList.add('active');
+  });
+});
+
+// ── GitHub file link injection ────────────────────────────────────────────────
+const GH_BASE = 'https://github.com/sumedh2026/DocuGenious/blob/main/';
+
+// Map: first meaningful class/interface name → repo-relative file path
+const FILE_MAP = {
+  // Core — Configuration (all live in AppSettings.cs)
+  'AppSettings':                           'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'JiraSettings':                          'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'GitSettings':                           'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'GeminiSettings':                        'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'GeminiTruncationSettings':              'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'GroqSettings':                          'src/DocuGenious.Core/Configuration/AppSettings.cs',
+  'OutputSettings':                        'src/DocuGenious.Core/Configuration/AppSettings.cs',
+
+  // Core — Interfaces
+  'IGeminiService':                        'src/DocuGenious.Core/Interfaces/IGeminiService.cs',
+  'IGroqService':                          'src/DocuGenious.Core/Interfaces/IGroqService.cs',
+  'IJiraService':                          'src/DocuGenious.Core/Interfaces/IJiraService.cs',
+  'IGitService':                           'src/DocuGenious.Core/Interfaces/IGitService.cs',
+  'IPdfService':                           'src/DocuGenious.Core/Interfaces/IPdfService.cs',
+
+  // Core — Models
+  'AnalysisResult':                        'src/DocuGenious.Core/Models/AnalysisResult.cs',
+  'Feature':                               'src/DocuGenious.Core/Models/AnalysisResult.cs',
+  'ApiEndpoint':                           'src/DocuGenious.Core/Models/AnalysisResult.cs',
+  'DocumentationType':                     'src/DocuGenious.Core/Models/DocumentationRequest.cs',
+  'DocumentationRequest':                  'src/DocuGenious.Core/Models/DocumentationRequest.cs',
+  'SourceType':                            'src/DocuGenious.Core/Models/DocumentationRequest.cs',
+  'GitRepositoryInfo':                     'src/DocuGenious.Core/Models/GitRepositoryInfo.cs',
+  'GitCommit':                             'src/DocuGenious.Core/Models/GitRepositoryInfo.cs',
+  'JiraTicket':                            'src/DocuGenious.Core/Models/JiraTicket.cs',
+  'ValidationItem':                        'src/DocuGenious.Core/Models/ValidationResult.cs',
+
+  // Integration.Gemini
+  'GeminiService':                         'src/DocuGenious.Integration.Gemini/GeminiService.cs',
+  'FlexibleApiEndpointListConverter':      'src/DocuGenious.Integration.Gemini/FlexibleJsonConverters.cs',
+  'ConverterHelpers':                      'src/DocuGenious.Integration.Gemini/FlexibleJsonConverters.cs',
+
+  // Integration.Jira
+  'JiraService':                           'src/DocuGenious.Integration.Jira/JiraService.cs',
+
+  // Integration.Git
+  'GitService':                            'src/DocuGenious.Integration.Git/GitService.cs',
+
+  // Integration.Pdf
+  'PdfService':                            'src/DocuGenious.Integration.Pdf/PdfService.cs',
+
+  // Integration.Groq
+  'GroqService':                           'src/DocuGenious.Integration.Groq/GroqService.cs',
+  'FlexibleJsonConverters':                'src/DocuGenious.Integration.Groq/FlexibleJsonConverters.cs',
+
+  // API
+  'API Bootstrap':                         'src/DocuGenious.Api/Program.cs',
+  'JobStatusService':                      'src/DocuGenious.Api/Services/JobStatusService.cs',
+  'DocumentationController':               'src/DocuGenious.Api/Controllers/DocumentationController.cs',
+  'GeminiController':                      'src/DocuGenious.Api/Controllers/GeminiController.cs',
+  'JiraController':                        'src/DocuGenious.Api/Controllers/JiraController.cs',
+  'GitController':                         'src/DocuGenious.Api/Controllers/GitController.cs',
+  'GroqController':                        'src/DocuGenious.Api/Controllers/GroqController.cs',
+
+  // Blazor — Services
+  'DocumentationApiService':              'src/DocuGenious.Blazor/Services/DocumentationApiService.cs',
+  'ValidationService':                    'src/DocuGenious.Blazor/Services/ValidationService.cs',
+  'FileStorageService':                   'src/DocuGenious.Blazor/Services/FileStorageService.cs',
+
+  // Blazor — Models
+  'GenerateRequest':                      'src/DocuGenious.Blazor/Models/BlazorModels.cs',
+  'SourceTypes':                          'src/DocuGenious.Blazor/Models/BlazorModels.cs',
+  'DropdownOption':                       'src/DocuGenious.Blazor/Models/BlazorModels.cs',
+  'ValidationRow':                        'src/DocuGenious.Blazor/Models/ValidationModels.cs',
+
+  // Blazor — Pages
+  'Home.razor':                           'src/DocuGenious.Blazor/Pages/Home.razor',
+
+  // Console
+  'CliHandler':                           'src/DocuGenious.Console/Cli/CliHandler.cs',
+};
+
+// GitHub octicon SVG (16 px)
+const GH_SVG = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+  0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+  -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+  .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+  -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+  1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82
+  1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01
+  1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+</svg>`;
+
+/**
+ * Given the raw innerText of a .class-name element, return the FILE_MAP lookup key.
+ * Handles compound names like "GitCommit · GitFileInfo · DirectoryStructure"
+ * and decorated names like "API Bootstrap — Program.cs" or "FlexibleJsonConverters (Groq)".
+ */
+function resolveKey(rawText) {
+  // Normalise non-breaking spaces → regular spaces, strip middle dots → pipe separator
+  const text = rawText.replace(/ /g, ' ').replace(/·/g, '|').trim();
+
+  // Try full normalised text first (e.g. exact match)
+  if (FILE_MAP[text]) return text;
+
+  // Split on first occurrence of ' | ', ' — ', or ' (' and use the left segment
+  const first = text.split(/\s*[|—(]\s*/)[0].trim();
+  if (FILE_MAP[first]) return first;
+
+  return null;
+}
+
+document.querySelectorAll('.class-card-header').forEach(header => {
+  const nameEl = header.querySelector('.class-name');
+  if (!nameEl) return;
+
+  const key = resolveKey(nameEl.innerText || nameEl.textContent);
+  if (!key) return;
+
+  const filePath = FILE_MAP[key];
+  const url = GH_BASE + filePath;
+
+  const link = document.createElement('a');
+  link.className = 'gh-link';
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.title = filePath;
+  link.innerHTML = GH_SVG + ' View on GitHub';
+
+  header.appendChild(link);
+});
+</script>
+</body>
+</html>

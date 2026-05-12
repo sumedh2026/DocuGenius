@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DocuGenious – Solution Overview Deck</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+  :root {
+    --primary:  #1E3A5F;
+    --accent:   #2E86AB;
+    --light:    #F0F6FF;
+    --gray:     #4A5568;
+    --white:    #FFFFFF;
+    --green:    #27AE60;
+    --orange:   #E67E22;
+    --red:      #E74C3C;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    background: #e8edf3;
+    color: var(--primary);
+  }
+
+  /* ── Each slide is A4 landscape ── */
+  .slide {
+    width: 297mm;
+    min-height: 210mm;
+    margin: 24px auto;
+    background: var(--white);
+    box-shadow: 0 6px 32px rgba(0,0,0,0.18);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    page-break-after: always;
+  }
+
+  /* ── Top bar ── */
+  .slide-bar {
+    height: 6px;
+    background: linear-gradient(90deg, var(--primary) 60%, var(--accent));
+  }
+
+  /* ── Header strip ── */
+  .slide-header {
+    background: var(--primary);
+    padding: 18px 36px 14px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .slide-header .brand {
+    font-size: 13px;
+    font-weight: 700;
+    color: #B0C4D8;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .slide-header .slide-num {
+    font-size: 11px;
+    color: #7A9BBF;
+  }
+
+  /* ── Slide body ── */
+  .slide-body {
+    flex: 1;
+    padding: 32px 44px 28px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slide-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 6px;
+  }
+  .slide-underline {
+    width: 60px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 2px;
+    margin-bottom: 22px;
+  }
+  .slide-subtitle {
+    font-size: 13px;
+    color: var(--gray);
+    margin-bottom: 20px;
+  }
+
+  /* ── Cover slide ── */
+  .cover .slide-body {
+    justify-content: center;
+    align-items: flex-start;
+    background: linear-gradient(135deg, #f0f6ff 0%, #ffffff 60%);
+  }
+  .cover .slide-title {
+    font-size: 42px;
+    line-height: 1.15;
+  }
+  .cover .cover-sub {
+    font-size: 17px;
+    color: var(--accent);
+    font-weight: 600;
+    margin: 10px 0 30px;
+  }
+  .cover .cover-meta {
+    font-size: 12px;
+    color: #7A9BBF;
+    border-top: 1px solid #d0dde8;
+    padding-top: 14px;
+    margin-top: 10px;
+  }
+  .cover-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 20px;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Columns ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    flex: 1;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px;
+    flex: 1;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--light);
+    border-radius: 8px;
+    padding: 18px 20px;
+    border-left: 4px solid var(--accent);
+  }
+  .card.green  { border-left-color: var(--green); }
+  .card.orange { border-left-color: var(--orange); }
+  .card.red    { border-left-color: var(--red); }
+  .card.primary{ border-left-color: var(--primary); }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .card-icon {
+    font-size: 16px;
+  }
+
+  /* ── Points ── */
+  .points { list-style: none; padding: 0; }
+  .points li {
+    font-size: 12px;
+    color: var(--gray);
+    padding: 5px 0 5px 18px;
+    position: relative;
+    line-height: 1.55;
+    border-bottom: 1px solid #e8eef5;
+  }
+  .points li:last-child { border-bottom: none; }
+  .points li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-size: 11px;
+    top: 6px;
+  }
+  .points.green  li::before { color: var(--green); }
+  .points.orange li::before { color: var(--orange); }
+  .points.red    li::before { color: var(--red); }
+  .points.primary li::before { color: var(--primary); }
+
+  /* ── Numbered list ── */
+  .num-list { list-style: none; padding: 0; counter-reset: step; }
+  .num-list li {
+    counter-increment: step;
+    font-size: 12px;
+    color: var(--gray);
+    padding: 6px 0 6px 32px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .num-list li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 4px;
+    width: 22px;
+    height: 22px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 22px;
+    text-align: center;
+  }
+
+  /* ── Arch boxes ── */
+  .arch-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    margin-bottom: 14px;
+    flex: 1;
+  }
+  .arch-box {
+    flex: 1;
+    background: var(--light);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+    border-top: 3px solid var(--accent);
+  }
+  .arch-box.dark {
+    background: var(--primary);
+    border-top-color: var(--accent);
+  }
+  .arch-box .ab-icon { font-size: 22px; margin-bottom: 6px; }
+  .arch-box .ab-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 4px;
+  }
+  .arch-box.dark .ab-label { color: white; }
+  .arch-box .ab-desc {
+    font-size: 10px;
+    color: var(--gray);
+    line-height: 1.4;
+  }
+  .arch-box.dark .ab-desc { color: #B0C4D8; }
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--accent);
+    font-size: 20px;
+    font-weight: 700;
+    padding: 0 2px;
+  }
+
+  /* ── Flow ── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--light);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-top: 14px;
+  }
+  .flow-step {
+    flex: 1;
+    text-align: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--primary);
+    padding: 8px 10px;
+    background: white;
+    border-radius: 6px;
+    border: 1.5px solid #d0dde8;
+  }
+  .flow-step .fs-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+  .flow-arrow {
+    color: var(--accent);
+    font-size: 18px;
+    padding: 0 6px;
+    font-weight: 700;
+  }
+
+  /* ── Impact metric ── */
+  .impact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    flex: 1;
+  }
+  .impact-card {
+    border-radius: 10px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .impact-card.blue   { background: #E8F4FD; border-left: 5px solid var(--accent); }
+  .impact-card.green  { background: #EAF7EF; border-left: 5px solid var(--green); }
+  .impact-card.orange { background: #FEF3E2; border-left: 5px solid var(--orange); }
+  .impact-card.navy   { background: #EAF0F8; border-left: 5px solid var(--primary); }
+  .impact-metric {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .impact-card.blue   .impact-metric { color: var(--accent); }
+  .impact-card.green  .impact-metric { color: var(--green); }
+  .impact-card.orange .impact-metric { color: var(--orange); }
+  .impact-card.navy   .impact-metric { color: var(--primary); }
+  .impact-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+  }
+  .impact-desc {
+    font-size: 11px;
+    color: var(--gray);
+    line-height: 1.5;
+  }
+
+  /* ── Footer ── */
+  .slide-footer {
+    padding: 8px 36px;
+    border-top: 1px solid #e0e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: #9aafc2;
+  }
+
+  /* ── Print ── */
+  @media print {
+    body { background: white; }
+    .slide {
+      margin: 0;
+      border-radius: 0;
+      box-shadow: none;
+      width: 100%;
+      min-height: 100vh;
+    }
+    .no-print { display: none !important; }
+  }
+
+  /* ── Print button ── */
+  .print-btn {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 12px 26px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(46,134,171,0.4);
+    z-index: 999;
+  }
+  .print-btn:hover { background: #1E6F8A; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">🖨 Export to PDF</button>
+
+<!-- ═══════════════════════════════════════════════
+     SLIDE 1 — COVER
+═══════════════════════════════════════════════ -->
+<div class="slide cover">
+  <div class="slide-bar"></div>
+  <div class="slide-header">
+    <span class="brand">DocuGenious</span>
+    <span class="slide-num">Solution Overview · 2025</span>
+  </div>
+  <div class="slide-body">
+    <span class="cover-badge">AI-POWERED DOCUMENTATION</span>
+    <div class="slide-title">Docu-Genius<br/>Solution Overview</div>
+    <div class="cover-sub">Automated Documentation Generation using Google Gemini AI</div>
+
+    <div style="display:flex; gap:28px; margin-bottom:30px; flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray);">
+        <span style="font-size:18px;">🎯</span> Problem Statement
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray);">
+        <span style="font-size:18px;">💡</span> Approach
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray);">
+        <span style="font-size:18px;">🏗️</span> Solution Design
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray);">
+        <span style="font-size:18px;">📈</span> Business Impact
+      </div>
+    </div>
+
+    <div class="cover-meta">
+      Prepared by the DocuGenious Team &nbsp;|&nbsp; Confidential &nbsp;|&nbsp; April 2025
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>DocuGenious — AI-Powered Documentation Generator</span>
+    <span>Slide 1 of 5</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     SLIDE 2 — PROBLEM STATEMENT
+═══════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-bar"></div>
+  <div class="slide-header">
+    <span class="brand">DocuGenious</span>
+    <span class="slide-num">Slide 2 of 5</span>
+  </div>
+  <div class="slide-body">
+    <div class="slide-title">🎯 Problem Statement</div>
+    <div class="slide-underline"></div>
+    <div class="slide-subtitle">Why does documentation remain the biggest bottleneck in software delivery?</div>
+
+    <div class="two-col">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div class="card red">
+          <div class="card-title"><span class="card-icon">⏱️</span> Writing Docs Takes Too Long</div>
+          <ul class="points red">
+            <li>Developers spend <strong>20–30% of sprint time</strong> writing documentation manually.</li>
+            <li>Each JIRA ticket requires separate write-ups for technical specs, acceptance criteria, and release notes.</li>
+            <li>Git repository analysis — cloning, reading code, summarising flows — takes hours per project.</li>
+            <li>Repetitive formatting and structuring effort is wasted sprint after sprint.</li>
+          </ul>
+        </div>
+
+        <div class="card red">
+          <div class="card-title"><span class="card-icon">🔄</span> Docs Go Stale Instantly</div>
+          <ul class="points red">
+            <li>Code changes every day; documentation rarely keeps up.</li>
+            <li>Outdated docs mislead new developers and cause incorrect assumptions.</li>
+            <li>No automated link between JIRA tickets and technical write-ups.</li>
+            <li>Teams maintain multiple versions of the same document in different places.</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div class="card orange">
+          <div class="card-title"><span class="card-icon">📉</span> No Standardisation</div>
+          <ul class="points orange">
+            <li>Every developer writes documentation differently — no consistent tone, structure, or depth.</li>
+            <li>Technical docs, user guides, API references, and architecture overviews each need different templates.</li>
+            <li>New team members cannot predict where or how documentation is stored.</li>
+            <li>Clients and stakeholders receive inconsistent quality across deliverables.</li>
+          </ul>
+        </div>
+
+        <div class="card orange">
+          <div class="card-title"><span class="card-icon">🚪</span> Slow Developer Onboarding</div>
+          <ul class="points orange">
+            <li>New joiners spend <strong>2–4 weeks</strong> just understanding the existing codebase.</li>
+            <li>Missing or outdated README files leave developers exploring code blindly.</li>
+            <li>No single source of truth that explains architecture, APIs, and setup steps together.</li>
+            <li>Senior developers waste time answering repetitive onboarding questions.</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>DocuGenious — AI-Powered Documentation Generator</span>
+    <span>Slide 2 of 5</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     SLIDE 3 — APPROACH
+═══════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-bar"></div>
+  <div class="slide-header">
+    <span class="brand">DocuGenious</span>
+    <span class="slide-num">Slide 3 of 5</span>
+  </div>
+  <div class="slide-body">
+    <div class="slide-title">💡 Our Approach</div>
+    <div class="slide-underline"></div>
+    <div class="slide-subtitle">How DocuGenious solves the documentation problem — step by step.</div>
+
+    <div class="two-col">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div class="card primary">
+          <div class="card-title"><span class="card-icon">🔌</span> Step 1 — Connect to Existing Tools</div>
+          <ul class="points primary">
+            <li><strong>Integrate with Atlassian JIRA</strong> — fetch ticket descriptions, acceptance criteria, comments, and linked issues automatically via JIRA REST API.</li>
+            <li><strong>Integrate with GitHub / Git</strong> — clone any public or private repository, walk the file tree, and read source files without any manual setup.</li>
+            <li><strong>Both sources can be used together</strong> — combine JIRA context with actual code for richer, more accurate documentation.</li>
+            <li>No data export or copy-paste required — works directly from live systems.</li>
+          </ul>
+        </div>
+
+        <div class="card primary">
+          <div class="card-title"><span class="card-icon">🤖</span> Step 2 — AI-Powered Analysis</div>
+          <ul class="points primary">
+            <li><strong>Google Gemini AI (gemini-2.5-flash)</strong> reads and understands all fetched content in a single pass.</li>
+            <li>The AI identifies architecture patterns, API endpoints, dependencies, and business logic automatically.</li>
+            <li>Prompts are tuned per document type — technical docs get different instructions than user guides.</li>
+            <li>Output is always <strong>structured JSON</strong> mapped to a fixed schema — consistent every time.</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div class="card green">
+          <div class="card-title"><span class="card-icon">📄</span> Step 3 — Generate Multiple Document Types</div>
+          <ul class="points green">
+            <li><strong>Technical Documentation</strong> — deep technical detail for developers.</li>
+            <li><strong>API Documentation</strong> — endpoint reference with methods, paths, request/response bodies.</li>
+            <li><strong>Architecture Overview</strong> — system design, component interactions, and data flow.</li>
+            <li><strong>User Guide</strong> — plain-English usage instructions for non-technical audiences.</li>
+            <li><strong>Full Documentation</strong> — all of the above in one comprehensive document.</li>
+          </ul>
+        </div>
+
+        <div class="card green">
+          <div class="card-title"><span class="card-icon">📥</span> Step 4 — Deliver as Professional PDF</div>
+          <ul class="points green">
+            <li>Every document is rendered as a <strong>branded, print-ready PDF</strong> using QuestPDF.</li>
+            <li>Consistent formatting — headings, bullet lists, code blocks, API tables, and feature cards.</li>
+            <li>Immediate download from the web UI or CLI — no manual formatting needed.</li>
+            <li>File history is preserved — previous documents are always available for re-download.</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Flow row -->
+    <div class="flow">
+      <div class="flow-step"><span class="fs-icon">👤</span>User Input</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span class="fs-icon">🔎</span>JIRA Fetch</div>
+      <div class="flow-arrow">+</div>
+      <div class="flow-step"><span class="fs-icon">📁</span>Git Clone</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span class="fs-icon">🤖</span>Gemini AI</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span class="fs-icon">📝</span>Structured JSON</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span class="fs-icon">📄</span>PDF Ready</div>
+    </div>
+
+  </div>
+  <div class="slide-footer">
+    <span>DocuGenious — AI-Powered Documentation Generator</span>
+    <span>Slide 3 of 5</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     SLIDE 4 — SOLUTION DESIGN
+═══════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-bar"></div>
+  <div class="slide-header">
+    <span class="brand">DocuGenious</span>
+    <span class="slide-num">Slide 4 of 5</span>
+  </div>
+  <div class="slide-body">
+    <div class="slide-title">🏗️ Solution Design</div>
+    <div class="slide-underline"></div>
+    <div class="slide-subtitle">A modular, cloud-ready .NET 10 architecture — each concern is isolated in its own project.</div>
+
+    <!-- Architecture boxes row 1 -->
+    <div class="arch-row">
+      <div class="arch-box dark">
+        <div class="ab-icon">🌐</div>
+        <div class="ab-label">DocuGenious.Blazor</div>
+        <div class="ab-desc">Blazor WebAssembly frontend. Source selection, ticket input, document type picker, live progress dialog, file history &amp; PDF download.</div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-box dark">
+        <div class="ab-icon">⚙️</div>
+        <div class="ab-label">DocuGenious.Api</div>
+        <div class="ab-desc">.NET 10 REST API. Orchestrates all integrations, manages job status streaming, exposes PDF download endpoint. Hosted on Azure App Service.</div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-box">
+        <div class="ab-icon">💻</div>
+        <div class="ab-label">DocuGenious.Console</div>
+        <div class="ab-desc">CLI tool for power users and CI/CD pipelines. Supports all generation modes with Rich terminal progress display.</div>
+      </div>
+    </div>
+
+    <!-- Architecture boxes row 2 -->
+    <div class="arch-row">
+      <div class="arch-box">
+        <div class="ab-icon">🤖</div>
+        <div class="ab-label">Integration.Gemini</div>
+        <div class="ab-desc">Google Gemini AI via REST. Handles prompting, 6-strategy JSON repair, 429 auto-retry with backoff, and context-window management.</div>
+      </div>
+      <div class="arch-box">
+        <div class="ab-icon">📋</div>
+        <div class="ab-label">Integration.Jira</div>
+        <div class="ab-desc">Atlassian JIRA REST API v3. Fetches ticket details, subtasks, acceptance criteria, linked issues, and comments.</div>
+      </div>
+      <div class="arch-box">
+        <div class="ab-icon">🗂️</div>
+        <div class="ab-label">Integration.Git</div>
+        <div class="ab-desc">LibGit2Sharp clone + file walker. Works on Azure App Service using temp directory. Auto-cleanup after analysis.</div>
+      </div>
+      <div class="arch-box">
+        <div class="ab-icon">📄</div>
+        <div class="ab-label">Integration.Pdf</div>
+        <div class="ab-desc">QuestPDF renderer. Full markdown parser — headings, bullets, code blocks, API tables, inline bold/italic/code.</div>
+      </div>
+      <div class="arch-box">
+        <div class="ab-icon">🔩</div>
+        <div class="ab-label">DocuGenious.Core</div>
+        <div class="ab-desc">Shared models, interfaces, and configuration (AppSettings, AnalysisResult, IGroqService, IPdfService). No external dependencies.</div>
+      </div>
+    </div>
+
+    <!-- Key design decisions -->
+    <div class="two-col" style="margin-top:10px; flex:0;">
+      <div style="background:#F0F6FF;border-radius:8px;padding:14px 18px;">
+        <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:8px;">🔑 Key Design Decisions</div>
+        <ul class="points" style="font-size:11px;">
+          <li>No AI SDK dependency — Gemini called via plain <code>HttpClient</code> REST.</li>
+          <li>Fixed JSON schema — AI output always mapped to <code>AnalysisResult</code> model.</li>
+          <li>6-strategy JSON repair pipeline handles malformed AI responses gracefully.</li>
+          <li>Per-request GUID subdirectories prevent concurrency issues during Git clone.</li>
+        </ul>
+      </div>
+      <div style="background:#F0F6FF;border-radius:8px;padding:14px 18px;">
+        <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:8px;">☁️ Cloud &amp; Deployment</div>
+        <ul class="points" style="font-size:11px;">
+          <li>Hosted on <strong>Azure App Service</strong> — auto-scales, no infrastructure management.</li>
+          <li>Git clone uses <code>Path.GetTempPath()</code> — works on Azure, Docker, and Linux.</li>
+          <li>Secrets managed via Azure App Settings (not in source code).</li>
+          <li>Blazor WASM served as static files — no server-side rendering needed.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+  <div class="slide-footer">
+    <span>DocuGenious — AI-Powered Documentation Generator</span>
+    <span>Slide 4 of 5</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     SLIDE 5 — BUSINESS IMPACT
+═══════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-bar"></div>
+  <div class="slide-header">
+    <span class="brand">DocuGenious</span>
+    <span class="slide-num">Slide 5 of 5</span>
+  </div>
+  <div class="slide-body">
+    <div class="slide-title">📈 Business Impact</div>
+    <div class="slide-underline"></div>
+    <div class="slide-subtitle">Measurable outcomes DocuGenious delivers for development teams and organisations.</div>
+
+    <!-- Metrics row -->
+    <div class="impact-grid" style="margin-bottom:18px; flex:0;">
+      <div class="impact-card blue">
+        <div class="impact-metric">~80%</div>
+        <div class="impact-label">Reduction in Documentation Effort</div>
+        <div class="impact-desc">What previously took 2–4 hours of manual writing per ticket is reduced to a single click and under 2 minutes of AI generation.</div>
+      </div>
+      <div class="impact-card green">
+        <div class="impact-metric">100%</div>
+        <div class="impact-label">Always Up-to-Date Documentation</div>
+        <div class="impact-desc">Documents are generated on-demand from live JIRA and Git sources — they reflect the current state of the project every single time.</div>
+      </div>
+      <div class="impact-card orange">
+        <div class="impact-metric">5×</div>
+        <div class="impact-label">Faster Developer Onboarding</div>
+        <div class="impact-desc">New team members get instant, AI-generated architecture overviews, setup guides, and API references — reducing ramp-up from weeks to days.</div>
+      </div>
+      <div class="impact-card navy">
+        <div class="impact-metric">5</div>
+        <div class="impact-label">Document Types from One Tool</div>
+        <div class="impact-desc">Technical docs, API references, architecture overviews, user guides, and full documentation — all produced consistently from the same inputs.</div>
+      </div>
+    </div>
+
+    <!-- Benefit rows -->
+    <div class="two-col">
+      <div class="card green">
+        <div class="card-title"><span class="card-icon">💰</span> Cost &amp; Productivity Gains</div>
+        <ul class="points green">
+          <li><strong>Saves developer hours</strong> — a 10-person team saves 15–20 hours per sprint on documentation alone.</li>
+          <li><strong>Zero dedicated technical writer</strong> required for standard project documentation.</li>
+          <li>Developers stay focused on feature delivery — documentation no longer blocks sprint velocity.</li>
+          <li>Consistent quality means fewer review cycles and back-and-forth corrections.</li>
+        </ul>
+      </div>
+
+      <div class="card blue">
+        <div class="card-title"><span class="card-icon">🏢</span> Organisational &amp; Strategic Value</div>
+        <ul class="points">
+          <li><strong>Audit &amp; compliance ready</strong> — professional PDF output can be submitted directly to clients, auditors, or regulators.</li>
+          <li><strong>Knowledge retention</strong> — documentation is captured automatically even when team members leave.</li>
+          <li>Supports <strong>multi-team standardisation</strong> — all projects follow the same documentation structure.</li>
+          <li><strong>Scales with your team</strong> — handles unlimited projects without adding documentation overhead.</li>
+          <li>Reduces <strong>vendor lock-in risk</strong> — AI provider can be swapped (Gemini → any model) without UI or API changes.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+  <div class="slide-footer">
+    <span>DocuGenious — AI-Powered Documentation Generator</span>
+    <span>Slide 5 of 5</span>
+  </div>
+</div>
+
+</body>
+</html>

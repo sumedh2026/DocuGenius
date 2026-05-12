@@ -1,0 +1,698 @@
+{
+  "_meta": {
+    "description": "Base test data for DocuGenious API — covers all source types, document types, edge cases, and error scenarios.",
+    "realGitRepo": "https://github.com/sumedh2026/DocuGenious.git",
+    "jiraProject": "ShopFlow (fictional test project — replace with your real Jira project key)",
+    "version": "1.1.0",
+    "lastUpdated": "2026-05-08"
+  },
+
+  "generateRequests": {
+
+    "jiraOnly_singleTicket_technicalDoc": {
+      "_scenario": "Happy path — one Jira ticket, Technical Documentation",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-101"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "SF-101_TechnicalDoc",
+      "additionalContext": "Focus on backend implementation details and database schema changes.",
+      "jobId": "job-jira-single-001"
+    },
+
+    "jiraOnly_multipleTickets_technicalDoc": {
+      "_scenario": "Happy path — multiple Jira tickets, Technical Documentation",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-101", "SF-102", "SF-103"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "SF-Sprint12_TechnicalDoc",
+      "additionalContext": "These tickets are part of Sprint 12 — Payment Gateway Integration epic.",
+      "jobId": "job-jira-multi-002"
+    },
+
+    "jiraOnly_userGuide": {
+      "_scenario": "Happy path — done tickets, User Guide generation",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-201", "SF-202"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "UserGuide",
+      "outputFileName": "ShopFlow_UserGuide_v1",
+      "additionalContext": "Target audience: non-technical store managers. Keep language simple.",
+      "jobId": "job-jira-userguide-003"
+    },
+
+    "gitOnly_mainBranch_technicalDoc": {
+      "_scenario": "Happy path — real DocuGenious repo, main branch, Technical Documentation",
+      "sourceType": "GitOnly",
+      "jiraTicketIds": [],
+      "gitRepositoryUrl": "https://github.com/sumedh2026/DocuGenious.git",
+      "gitBranch": "main",
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "DocuGenious_TechnicalDoc",
+      "additionalContext": "Focus on the Gemini AI integration, truncation pipeline, and Blazor UI state machine.",
+      "jobId": "job-git-main-004"
+    },
+
+    "gitOnly_featureBranch": {
+      "_scenario": "Real DocuGenious repo on feature branch",
+      "sourceType": "GitOnly",
+      "jiraTicketIds": [],
+      "gitRepositoryUrl": "https://github.com/sumedh2026/DocuGenious.git",
+      "gitBranch": "feature/api-integration-libraries",
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "DocuGenious_FeatureBranch_TechnicalDoc",
+      "additionalContext": null,
+      "jobId": "job-git-feature-005"
+    },
+
+    "both_jiraAndGit_technicalDoc": {
+      "_scenario": "Happy path — Jira tickets + real DocuGenious repo combined",
+      "sourceType": "Both",
+      "jiraTicketIds": ["SF-101", "SF-102"],
+      "gitRepositoryUrl": "https://github.com/sumedh2026/DocuGenious.git",
+      "gitBranch": "main",
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "DocuGenious_Combined_TechnicalDoc",
+      "additionalContext": "Include API contracts and configuration guide.",
+      "jobId": "job-both-full-006"
+    },
+
+    "noOutputFileName": {
+      "_scenario": "Edge case — no output file name (server auto-generates one)",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-101"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "",
+      "additionalContext": null,
+      "jobId": "job-nofilename-007"
+    },
+
+    "noJobId": {
+      "_scenario": "Edge case — no jobId (no live status polling)",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-101"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "SF-101_NoPolling",
+      "additionalContext": null,
+      "jobId": null
+    },
+
+    "error_noTicketIds": {
+      "_scenario": "Error case — JiraOnly with empty ticket list (expect 400)",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": [],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "ShouldFail",
+      "additionalContext": null,
+      "jobId": "job-err-notickets-008"
+    },
+
+    "error_noRepoUrl": {
+      "_scenario": "Error case — GitOnly with no URL (expect 400)",
+      "sourceType": "GitOnly",
+      "jiraTicketIds": [],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "ShouldFail",
+      "additionalContext": null,
+      "jobId": "job-err-nourl-009"
+    },
+
+    "error_invalidRepoUrl": {
+      "_scenario": "Error case — unreachable Git URL (expect 500 from clone failure)",
+      "sourceType": "GitOnly",
+      "jiraTicketIds": [],
+      "gitRepositoryUrl": "https://github.com/nonexistent-org/nonexistent-repo.git",
+      "gitBranch": "main",
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "ShouldFail",
+      "additionalContext": null,
+      "jobId": "job-err-badurl-010"
+    },
+
+    "error_invalidTicketId": {
+      "_scenario": "Error case — ticket ID that does not exist in Jira (expect 400)",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["INVALID-99999"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "TechnicalDocumentation",
+      "outputFileName": "ShouldFail",
+      "additionalContext": null,
+      "jobId": "job-err-badticket-011"
+    },
+
+    "error_userGuideOnOpenTickets": {
+      "_scenario": "Error case — User Guide requested on non-Done tickets (expect 400)",
+      "sourceType": "JiraOnly",
+      "jiraTicketIds": ["SF-101"],
+      "gitRepositoryUrl": null,
+      "gitBranch": null,
+      "documentationType": "UserGuide",
+      "outputFileName": "ShouldFail",
+      "additionalContext": null,
+      "jobId": "job-err-userguide-012"
+    }
+  },
+
+  "jiraTickets": {
+
+    "SF-101": {
+      "_scenario": "Story — In Progress, high priority, with acceptance criteria and comments",
+      "key": "SF-101",
+      "summary": "Implement Stripe payment gateway integration for checkout flow",
+      "description": "As a customer, I want to be able to pay for my order using a credit/debit card via Stripe so that I can complete my purchase securely.\n\n## Background\nThe current checkout flow only supports PayPal. Business has requested Stripe as a primary payment method due to lower transaction fees (2.9% + $0.30 vs PayPal's 3.49% + $0.49).\n\n## Technical Approach\n- Integrate `Stripe.net` SDK (v43.x)\n- Create `IPaymentGateway` interface to allow future provider swaps\n- Store `PaymentIntentId` in `Orders` table for reconciliation\n- Webhook endpoint at `/api/webhooks/stripe` for async event handling\n- Support 3DS2 authentication flow\n\n## Acceptance Criteria\n- Given a customer enters valid card details, when they click Pay, then the order is created and payment is captured\n- Given a card is declined, when Stripe returns a failure, then the user sees a clear error message and the order is not created\n- Given a webhook arrives from Stripe, when the signature is valid, then the order status is updated accordingly\n- Given the Stripe API is down, when a payment attempt fails, then a graceful fallback message is shown",
+      "status": "In Progress",
+      "priority": "High",
+      "assignee": "Alex Turner",
+      "reporter": "Sarah Mitchell",
+      "issueType": "Story",
+      "labels": ["payment", "checkout", "stripe", "sprint-12"],
+      "components": ["Checkout Service", "Payment Service"],
+      "acceptanceCriteria": [
+        "Given a customer enters valid card details, when they click Pay, then the order is created and payment is captured",
+        "Given a card is declined, when Stripe returns a failure, then the user sees a clear error message and the order is not created",
+        "Given a webhook arrives from Stripe, when the signature is valid, then the order status is updated accordingly",
+        "Given the Stripe API is down, when a payment attempt fails, then a graceful fallback message is shown"
+      ],
+      "comments": [
+        {
+          "author": "Alex Turner",
+          "body": "Started implementation. Created the IPaymentGateway interface and StripePaymentGateway implementation. Webhook endpoint is in progress.",
+          "createdDate": "2026-04-28T10:15:00Z"
+        },
+        {
+          "author": "Sarah Mitchell",
+          "body": "Make sure the 3DS2 redirect flow is tested on mobile browsers — had issues with this in a previous project.",
+          "createdDate": "2026-04-29T14:30:00Z"
+        },
+        {
+          "author": "Alex Turner",
+          "body": "Good point. Added mobile 3DS2 tests to the test plan. Using Stripe's test cards for the redirect flow.",
+          "createdDate": "2026-04-30T09:00:00Z"
+        }
+      ],
+      "subTasks": [
+        {
+          "key": "SF-111",
+          "summary": "Create IPaymentGateway interface and StripePaymentGateway implementation",
+          "status": "Done",
+          "priority": "High",
+          "assignee": "Alex Turner",
+          "reporter": "Alex Turner",
+          "issueType": "Sub-task",
+          "labels": [],
+          "components": ["Payment Service"],
+          "acceptanceCriteria": [],
+          "comments": [],
+          "subTasks": [],
+          "projectKey": "SF",
+          "projectName": "ShopFlow",
+          "description": "",
+          "createdDate": "2026-04-20T08:00:00Z",
+          "updatedDate": "2026-04-25T16:00:00Z"
+        },
+        {
+          "key": "SF-112",
+          "summary": "Implement Stripe webhook endpoint with signature verification",
+          "status": "In Progress",
+          "priority": "High",
+          "assignee": "Alex Turner",
+          "reporter": "Alex Turner",
+          "issueType": "Sub-task",
+          "labels": [],
+          "components": ["Payment Service"],
+          "acceptanceCriteria": [],
+          "comments": [],
+          "subTasks": [],
+          "projectKey": "SF",
+          "projectName": "ShopFlow",
+          "description": "",
+          "createdDate": "2026-04-20T08:00:00Z",
+          "updatedDate": "2026-04-30T10:00:00Z"
+        }
+      ],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-15T09:00:00Z",
+      "updatedDate": "2026-04-30T10:00:00Z"
+    },
+
+    "SF-102": {
+      "_scenario": "Bug — High priority, In Progress, detailed reproduction steps",
+      "key": "SF-102",
+      "summary": "Order total recalculated incorrectly when applying multiple discount codes",
+      "description": "## Bug Report\nWhen a customer applies two discount codes at checkout (e.g., a percentage discount + a fixed-amount discount), the final order total is calculated incorrectly. The percentage discount is applied to the post-fixed-discount price rather than the original price, resulting in a lower total than intended.\n\n## Steps to Reproduce\n1. Add items totalling $100 to the cart\n2. Apply discount code SAVE10 (10% off = $10 discount, total = $90)\n3. Apply discount code FLAT5 (flat $5 off)\n4. Expected: $90 - $5 = $85\n5. Actual: $90 * 0.90 = $81 (system re-applies percentage discount to discounted price)\n\n## Root Cause\nSuspected issue in `DiscountService.ApplyDiscounts()` — discounts are applied sequentially without resetting base price.\n\n## Impact\nRevenue loss: ~$4 per affected order. Estimated 200-300 orders affected per day based on discount code usage logs.",
+      "status": "In Progress",
+      "priority": "High",
+      "assignee": "Priya Sharma",
+      "reporter": "QA Team",
+      "issueType": "Bug",
+      "labels": ["checkout", "discount", "regression", "sprint-12"],
+      "components": ["Checkout Service", "Order Service"],
+      "acceptanceCriteria": [
+        "Given multiple discount codes are applied, when order total is calculated, then each discount is applied to the original pre-discount price independently",
+        "Given a percentage and a flat discount are combined, when the total is shown, then the combined discount equals sum of both discounts applied to original price",
+        "Given the fix is deployed, when regression tests run, then all existing discount combination scenarios pass"
+      ],
+      "comments": [
+        {
+          "author": "Priya Sharma",
+          "body": "Confirmed root cause in DiscountService.ApplyDiscounts(). The discounts list is iterated in order and each uses the running total rather than original price. Fix is straightforward.",
+          "createdDate": "2026-04-29T11:00:00Z"
+        },
+        {
+          "author": "QA Team",
+          "body": "Also noticed this affects the order summary email — the breakdown shows wrong individual discount amounts.",
+          "createdDate": "2026-04-29T15:45:00Z"
+        }
+      ],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-28T08:30:00Z",
+      "updatedDate": "2026-04-30T12:00:00Z"
+    },
+
+    "SF-103": {
+      "_scenario": "Task — To Do, medium priority, performance improvement",
+      "key": "SF-103",
+      "summary": "Add Redis caching layer for product catalogue API responses",
+      "description": "The `/api/products` endpoint is queried ~50,000 times per hour during peak traffic. Product data changes at most once every 15 minutes (admin updates). Adding Redis caching with a 10-minute TTL will reduce database load by an estimated 90%.\n\n## Approach\n- Add `StackExchange.Redis` NuGet package\n- Create `ICacheService` abstraction\n- Wrap `ProductRepository.GetAllAsync()` with a cache-aside pattern\n- Cache key: `products:all` and `products:{id}`\n- TTL: 600 seconds (configurable via appsettings)\n- Invalidate on product create/update/delete",
+      "status": "To Do",
+      "priority": "Medium",
+      "assignee": "Unassigned",
+      "reporter": "David Chen",
+      "issueType": "Task",
+      "labels": ["performance", "caching", "redis"],
+      "components": ["Product Service", "Infrastructure"],
+      "acceptanceCriteria": [
+        "Given a product list request hits the cache, when the TTL has not expired, then the response time is under 10ms",
+        "Given a product is updated, when the cache is invalidated, then the next request fetches fresh data from the database",
+        "Given Redis is unavailable, when a request comes in, then the system falls back to the database gracefully without throwing an exception"
+      ],
+      "comments": [],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-25T10:00:00Z",
+      "updatedDate": "2026-04-25T10:00:00Z"
+    },
+
+    "SF-201": {
+      "_scenario": "Done ticket — eligible for User Guide generation",
+      "key": "SF-201",
+      "summary": "Add order tracking page with real-time status updates",
+      "description": "Customers can now track their order status in real-time via the /my-orders/{orderId}/track page. Status updates are pushed via SignalR every 30 seconds.",
+      "status": "Done",
+      "priority": "Medium",
+      "assignee": "Emma Wilson",
+      "reporter": "Product Team",
+      "issueType": "Story",
+      "labels": ["orders", "tracking", "signalr"],
+      "components": ["Order Service", "Frontend"],
+      "acceptanceCriteria": [
+        "Given a customer navigates to the tracking page, when the page loads, then the current order status is displayed",
+        "Given an order status changes, when the SignalR update is received, then the page updates without a full refresh"
+      ],
+      "comments": [
+        {
+          "author": "Emma Wilson",
+          "body": "Deployed to production on 2026-04-20. All acceptance criteria verified by QA.",
+          "createdDate": "2026-04-20T17:00:00Z"
+        }
+      ],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-01T09:00:00Z",
+      "updatedDate": "2026-04-20T17:00:00Z"
+    },
+
+    "SF-202": {
+      "_scenario": "Done ticket — eligible for User Guide generation",
+      "key": "SF-202",
+      "summary": "Implement order cancellation within 30-minute window",
+      "description": "Customers can cancel an order within 30 minutes of placing it, as long as it has not entered the 'Shipped' status. The cancellation triggers an automatic refund via the original payment method.",
+      "status": "Done",
+      "priority": "High",
+      "assignee": "Alex Turner",
+      "reporter": "Product Team",
+      "issueType": "Story",
+      "labels": ["orders", "cancellation", "refunds"],
+      "components": ["Order Service", "Payment Service"],
+      "acceptanceCriteria": [
+        "Given an order was placed less than 30 minutes ago and is not yet shipped, when a customer requests cancellation, then the order is cancelled and a refund is initiated",
+        "Given an order was placed more than 30 minutes ago, when a customer attempts to cancel, then an appropriate error message is displayed",
+        "Given an order has status Shipped, when a customer attempts to cancel, then the cancel button is disabled"
+      ],
+      "comments": [
+        {
+          "author": "QA Team",
+          "body": "Tested all edge cases including timezone boundary conditions. All pass.",
+          "createdDate": "2026-04-18T14:00:00Z"
+        }
+      ],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-02T09:00:00Z",
+      "updatedDate": "2026-04-18T16:00:00Z"
+    },
+
+    "SF-301_minimalFields": {
+      "_scenario": "Edge case — ticket with minimal data (empty description, no comments, no AC)",
+      "key": "SF-301",
+      "summary": "Update footer copyright year",
+      "description": "",
+      "status": "To Do",
+      "priority": "Low",
+      "assignee": "Unassigned",
+      "reporter": "David Chen",
+      "issueType": "Task",
+      "labels": [],
+      "components": [],
+      "acceptanceCriteria": [],
+      "comments": [],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-05-01T09:00:00Z",
+      "updatedDate": "2026-05-01T09:00:00Z"
+    },
+
+    "SF-302_longDescription": {
+      "_scenario": "Edge case — very long description, tests JiraDescriptionMaxChars truncation (currently 5000 chars)",
+      "key": "SF-302",
+      "summary": "Migrate order database from SQL Server 2019 to Azure SQL Hyperscale",
+      "description": "## Overview\nThis is a major infrastructure migration ticket. The current SQL Server 2019 instance hosts the Orders database (1.2 TB, 480M rows in OrderItems). We are migrating to Azure SQL Hyperscale to enable auto-scaling read replicas and faster backup/restore times.\n\n## Phase 1: Assessment\n- Audit all stored procedures (47 identified, 12 use deprecated syntax)\n- Profile slow queries (>500ms) — currently 23 identified\n- Check collation compatibility (SQL_Latin1_General_CP1_CI_AS → same on Azure SQL)\n- Estimate downtime window: target <2 hours\n\n## Phase 2: Schema Preparation\n- Remove all deprecated NOLOCK hints from application queries\n- Convert non-clustered columnstore indexes (not supported on Hyperscale)\n- Update connection strings to use AAD authentication instead of SQL auth\n- Add retry logic (Polly) for transient Azure SQL errors (error codes: 40613, 40501, 49918)\n\n## Phase 3: Data Migration\n- Use Azure Database Migration Service (DMS) for online migration\n- Set up read replica in East US 2 as failover target\n- Verify row counts and checksums post-migration\n- Run parallel read test: 1000 concurrent queries on both old and new instance, compare response times\n\n## Phase 4: Cutover\n- Maintenance window: Saturday 2026-06-07 02:00 UTC\n- Redirect connection strings via Azure App Configuration (no deployment needed)\n- Monitor for 2 hours post-cutover\n- Rollback plan: revert App Configuration value, RTO <5 minutes\n\n## Phase 5: Decommission\n- Keep SQL Server 2019 instance live for 2 weeks as safety net\n- Decommission on 2026-06-21 if no issues reported\n\n## Dependencies\n- DevOps approval for maintenance window\n- DBA sign-off on migration plan\n- Azure DMS quota increase request (submitted 2026-04-30, ref: MSFT-QUOTA-88821)\n\n## Risks\n- Hyperscale does not support cross-database queries — identified 3 stored procs that need refactoring\n- Azure SQL Hyperscale connection string format differs slightly — needs thorough app-side testing\n- Cost increase: estimated $2,400/month additional for read replica (approved by Finance)\n\n## Success Metrics\n- Zero data loss post-migration\n- P99 query latency improvement: target 40% reduction\n- Auto-failover test: RTO < 30 seconds",
+      "status": "In Progress",
+      "priority": "Critical",
+      "assignee": "David Chen",
+      "reporter": "CTO",
+      "issueType": "Epic",
+      "labels": ["infrastructure", "database", "migration", "azure"],
+      "components": ["Infrastructure", "Order Service", "DBA"],
+      "acceptanceCriteria": [
+        "Given the migration is complete, when row counts are verified, then Orders and OrderItems counts match exactly",
+        "Given Hyperscale is live, when 1000 concurrent queries run, then P99 latency is at least 40% lower than baseline",
+        "Given the primary node fails, when auto-failover triggers, then the read replica takes over within 30 seconds",
+        "Given the App Configuration value is reverted, when the rollback is executed, then all traffic returns to SQL Server 2019 within 5 minutes"
+      ],
+      "comments": [],
+      "subTasks": [],
+      "projectKey": "SF",
+      "projectName": "ShopFlow",
+      "createdDate": "2026-04-10T09:00:00Z",
+      "updatedDate": "2026-05-01T09:00:00Z"
+    }
+  },
+
+  "gitRepositoryInfo": {
+
+    "docuGenious_main": {
+      "_scenario": "Happy path — real DocuGenious repo, main branch (use this for GitOnly and Both tests)",
+      "repositoryPath": "/tmp/clones/DocuGenious",
+      "repositoryUrl": "https://github.com/sumedh2026/DocuGenious.git",
+      "currentBranch": "main",
+      "branches": [
+        "main",
+        "master",
+        "feature/api-integration-libraries",
+        "feature/api-integration-libraries-29apr"
+      ],
+      "totalCommits": "20",
+      "description": "DocuGenious — AI-powered technical documentation generator. Fetches JIRA tickets and Git repository data, analyses with Gemini AI, and produces a formatted PDF.",
+      "technologies": ["C#", ".NET 10", "ASP.NET Core", "Blazor WebAssembly", "QuestPDF", "LibGit2Sharp", "Docker"],
+      "contributors": ["Sumedh Adkar", "Ravikrishna Patloori"],
+      "recentCommits": [
+        {
+          "sha": "d9227eb51d8ec2e0af3909c758460ace83d5a8e0",
+          "message": "Polish UI: placeholder text, spacing, label casing, contextual status, cancel button, remove AI branding",
+          "author": "Sumedh Adkar",
+          "date": "2026-05-07T06:29:20Z",
+          "changedFiles": [
+            "src/DocuGenious.Api/Controllers/DocumentationController.cs",
+            "src/DocuGenious.Blazor/Pages/Home.razor"
+          ]
+        },
+        {
+          "sha": "9b940d9036408b07adaf5fb1f4df6fe8e7dbdf8b",
+          "message": "Updated values for truncation logic.",
+          "author": "Sumedh Adkar",
+          "date": "2026-05-05T12:51:48Z",
+          "changedFiles": [
+            "src/DocuGenious.Api/appsettings.json",
+            "src/DocuGenious.Api/appsettings.Development.json"
+          ]
+        },
+        {
+          "sha": "32a86c4b2d774f7411d064f7b82310641622a926",
+          "message": "Make Gemini context truncation limits configurable via appsettings",
+          "author": "Sumedh Adkar",
+          "date": "2026-05-05T10:23:50Z",
+          "changedFiles": [
+            "src/DocuGenious.Core/Configuration/AppSettings.cs",
+            "src/DocuGenious.Integration.Gemini/GeminiService.cs",
+            "src/DocuGenious.Api/appsettings.json"
+          ]
+        },
+        {
+          "sha": "ff967aea402221864bbfb9b1c1b3e58ae6a5346f",
+          "message": "Fix Document Type resetting to wrong value on Close/Back to form",
+          "author": "Sumedh Adkar",
+          "date": "2026-04-30T11:04:01Z",
+          "changedFiles": [
+            "src/DocuGenious.Blazor/Pages/Home.razor"
+          ]
+        },
+        {
+          "sha": "7c0548be981a39668c3f01a6bbee546a73315f67",
+          "message": "Fix Git clone failure on Azure App Service — use temp directory",
+          "author": "Sumedh Adkar",
+          "date": "2026-04-30T10:48:18Z",
+          "changedFiles": [
+            "src/DocuGenious.Integration.Git/GitService.cs",
+            "src/DocuGenious.Core/Configuration/AppSettings.cs"
+          ]
+        }
+      ],
+      "files": [
+        {
+          "path": "src/DocuGenious.Core/Configuration/AppSettings.cs",
+          "extension": ".cs",
+          "size": 4200,
+          "content": "namespace DocuGenious.Core.Configuration;\n\npublic class AppSettings\n{\n    public JiraSettings Jira { get; set; } = new();\n    public GitSettings Git { get; set; } = new();\n    public GroqSettings Groq { get; set; } = new();\n    public GeminiSettings Gemini { get; set; } = new();\n    public OutputSettings Output { get; set; } = new();\n}\n\npublic class GeminiSettings\n{\n    public string ApiKey { get; set; } = string.Empty;\n    public string Model { get; set; } = \"gemini-2.5-flash\";\n    public int MaxOutputTokens { get; set; } = 8192;\n    public int TimeoutSeconds { get; set; } = 300;\n    public string BaseUrl { get; set; } = \"https://generativelanguage.googleapis.com/v1beta\";\n    public GeminiTruncationSettings Truncation { get; set; } = new();\n}\n\npublic class GeminiTruncationSettings\n{\n    public int JiraDescriptionMaxChars { get; set; } = 2000;\n    public int JiraAcceptanceCriteriaMaxChars { get; set; } = 300;\n    public int JiraCommentMaxChars { get; set; } = 300;\n    public int GitCommitMessageMaxChars { get; set; } = 200;\n    public int GitFileContentMaxChars { get; set; } = 2000;\n    public int PromptMaxChars { get; set; } = 80000;\n}"
+        },
+        {
+          "path": "src/DocuGenious.Api/Controllers/DocumentationController.cs",
+          "extension": ".cs",
+          "size": 5800,
+          "content": "using DocuGenious.Api.Services;\nusing DocuGenious.Core.Interfaces;\nusing DocuGenious.Core.Models;\nusing Microsoft.AspNetCore.Mvc;\n\nnamespace DocuGenious.Api.Controllers;\n\n[ApiController]\n[Route(\"api/documentation\")]\npublic class DocumentationController : ControllerBase\n{\n    private readonly IJiraService _jiraService;\n    private readonly IGitService _gitService;\n    private readonly IGeminiService _geminiService;\n    private readonly IPdfService _pdfService;\n    private readonly JobStatusService _jobStatus;\n\n    [HttpPost(\"generate\")]\n    public async Task<IActionResult> GenerateDocumentation([FromBody] DocumentationRequest request)\n    {\n        var jobId = request.JobId;\n        void Status(string msg) { if (!string.IsNullOrWhiteSpace(jobId)) _jobStatus.Update(jobId, msg); }\n\n        Status(\"📋 Fetching Jira tickets…\");\n        // ... fetch, analyse, generate PDF\n        return Ok(new { success = true, fileName = \"output.pdf\" });\n    }\n\n    [HttpGet(\"status/{jobId}\")]\n    public IActionResult GetStatus(string jobId)\n    {\n        var status = _jobStatus.Get(jobId);\n        return status is null ? NoContent() : Ok(new { status });\n    }\n}"
+        },
+        {
+          "path": "src/DocuGenious.Integration.Gemini/GeminiService.cs",
+          "extension": ".cs",
+          "size": 12400,
+          "content": "using DocuGenious.Core.Configuration;\nusing DocuGenious.Core.Interfaces;\nusing DocuGenious.Core.Models;\nusing Microsoft.Extensions.Options;\n\nnamespace DocuGenious.Integration.Gemini;\n\npublic class GeminiService : IGeminiService\n{\n    private readonly GeminiSettings _settings;\n    private readonly HttpClient _http;\n\n    public GeminiService(IOptions<AppSettings> options, HttpClient http)\n    {\n        _settings = options.Value.Gemini;\n        _http = http;\n    }\n\n    private string BuildJiraContext(List<JiraTicket> tickets)\n    {\n        var t = _settings.Truncation;\n        var sb = new StringBuilder();\n        foreach (var ticket in tickets)\n        {\n            sb.AppendLine($\"Key: {ticket.Key}\");\n            sb.AppendLine($\"Summary: {ticket.Summary}\");\n            var desc = ticket.Description?.Length > t.JiraDescriptionMaxChars\n                ? ticket.Description[..t.JiraDescriptionMaxChars] + \"...\"\n                : ticket.Description;\n            sb.AppendLine($\"Description: {desc}\");\n        }\n        return sb.ToString();\n    }\n\n    private string TruncateIfNeeded(string prompt)\n    {\n        var max = _settings.Truncation.PromptMaxChars;\n        return prompt.Length > max ? prompt[..max] + \"\\n\\n[Source data truncated]\" : prompt;\n    }\n}"
+        },
+        {
+          "path": "src/DocuGenious.Blazor/Pages/Home.razor",
+          "extension": ".razor",
+          "size": 16200,
+          "content": "@page \"/\"\n@using DocuGenious.Blazor.Models\n@using DocuGenious.Blazor.Services\n@inject DocumentationApiService Api\n@inject ValidationService Validator\n\n<div class=\"dg-card\">\n    <div class=\"dg-header\">\n        <h1>🚀 Docu-Genius</h1>\n        <p class=\"dg-subtitle\">AI-powered documentation in seconds</p>\n    </div>\n\n    <p class=\"dg-section-title\">Source</p>\n    <div class=\"dg-field\">\n        <label class=\"dg-label\">Choose an option</label>\n        <select class=\"dg-select\" @bind=\"_sourceType\">\n            <option value=\"\">Select your source…</option>\n            @foreach (var opt in SourceTypes.Options) { <option value=\"@opt.Value\">@opt.Label</option> }\n        </select>\n    </div>\n</div>"
+        },
+        {
+          "path": "src/DocuGenious.Api/appsettings.json",
+          "extension": ".json",
+          "size": 890,
+          "content": "{\n  \"Jira\": { \"BaseUrl\": \"https://your-domain.atlassian.net\", \"Username\": \"\", \"ApiToken\": \"\" },\n  \"Git\":  { \"Username\": \"\", \"PersonalAccessToken\": \"\", \"CloneDirectory\": \"\" },\n  \"Gemini\": {\n    \"ApiKey\": \"\",\n    \"Model\": \"gemini-2.5-flash\",\n    \"MaxOutputTokens\": 16384,\n    \"TimeoutSeconds\": 300,\n    \"Truncation\": {\n      \"JiraDescriptionMaxChars\": 5000,\n      \"JiraAcceptanceCriteriaMaxChars\": 1000,\n      \"JiraCommentMaxChars\": 1000,\n      \"GitCommitMessageMaxChars\": 1000,\n      \"GitFileContentMaxChars\": 5000,\n      \"PromptMaxChars\": 100000\n    }\n  },\n  \"Output\": { \"PdfDirectory\": \"./output\" }\n}"
+        }
+      ],
+      "structure": {
+        "name": "DocuGenious",
+        "isDirectory": true,
+        "children": [
+          {
+            "name": "src",
+            "isDirectory": true,
+            "children": [
+              { "name": "DocuGenious.Core", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Api", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Blazor", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Integration.Gemini", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Integration.Jira", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Integration.Git", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Integration.Pdf", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Integration.Groq", "isDirectory": true, "children": [] },
+              { "name": "DocuGenious.Console", "isDirectory": true, "children": [] }
+            ]
+          },
+          { "name": "docs", "isDirectory": true, "children": [] },
+          { "name": "DocuGenious.sln", "isDirectory": false, "children": [] },
+          { "name": "README.md", "isDirectory": false, "children": [] }
+        ]
+      }
+    },
+
+    "emptyRepo_edgeCase": {
+      "_scenario": "Edge case — newly initialised repo with no source files (fictional, do not use as real URL)",
+      "_note": "Use a private empty repo you control when running this test case",
+      "repositoryPath": "/tmp/clones/empty-repo",
+      "repositoryUrl": "https://github.com/sumedh2026/DocuGenious.git",
+      "currentBranch": "main",
+      "branches": ["main"],
+      "totalCommits": "1",
+      "description": "",
+      "technologies": [],
+      "contributors": ["Sumedh Adkar"],
+      "recentCommits": [
+        {
+          "sha": "abc123def456abc123def456abc123def456abc1",
+          "message": "Initial commit",
+          "author": "Sumedh Adkar",
+          "date": "2026-05-01T08:00:00Z",
+          "changedFiles": ["README.md"]
+        }
+      ],
+      "files": [],
+      "structure": {
+        "name": "new-repo",
+        "isDirectory": true,
+        "children": [
+          { "name": "README.md", "isDirectory": false, "children": [] }
+        ]
+      }
+    }
+  },
+
+  "expectedResponses": {
+
+    "success_200": {
+      "_scenario": "Successful generation response from POST /api/documentation/generate",
+      "success": true,
+      "filePath": "./output/SF-101_TechnicalDoc.pdf",
+      "fileName": "SF-101_TechnicalDoc.pdf",
+      "error": null
+    },
+
+    "success_autoGeneratedFileName": {
+      "_scenario": "Success — server auto-generated file name when outputFileName is empty",
+      "success": true,
+      "filePath": "./output/SF-101_TechnicalDocumentation_20260508.pdf",
+      "fileName": "SF-101_TechnicalDocumentation_20260508.pdf",
+      "error": null
+    },
+
+    "success_gitOnly": {
+      "_scenario": "Success — GitOnly with DocuGenious repo",
+      "success": true,
+      "filePath": "./output/DocuGenious_TechnicalDocumentation_20260508.pdf",
+      "fileName": "DocuGenious_TechnicalDocumentation_20260508.pdf",
+      "error": null
+    },
+
+    "error_400_noTicketIds": {
+      "_scenario": "400 — JiraOnly with empty ticket list",
+      "message": "At least one JIRA ticket ID is required"
+    },
+
+    "error_400_noRepoUrl": {
+      "_scenario": "400 — GitOnly with no URL or local path",
+      "message": "Either gitRepositoryUrl or gitLocalPath is required"
+    },
+
+    "error_400_invalidTicket": {
+      "_scenario": "400 — Ticket ID not found in Jira",
+      "message": "Could not fetch any of the requested JIRA ticket(s): INVALID-99999. Please verify the ticket IDs exist and that your JIRA credentials have access."
+    },
+
+    "error_400_userGuideOnOpenTickets": {
+      "_scenario": "400 — User Guide requested on non-Done tickets",
+      "message": "User Guide can only be generated for completed tickets. The following ticket(s) are not done yet: SF-101 (status: In Progress). Please make sure all tickets have status 'Done' or 'Complete' before generating a User Guide."
+    },
+
+    "error_500_cloneFailure": {
+      "_scenario": "500 — Git clone of unreachable URL failed",
+      "message": "Repository clone failed: unable to connect to https://github.com/nonexistent-org/nonexistent-repo.git. Ensure the URL is correct and your Personal Access Token has read access."
+    },
+
+    "statusPoll_200_step1": {
+      "_scenario": "GET /api/documentation/status/{jobId} — Step 1: fetching Jira tickets",
+      "status": "📋 Fetching 2 JIRA tickets…"
+    },
+
+    "statusPoll_200_step2": {
+      "_scenario": "GET /api/documentation/status/{jobId} — Step 2: cloning Git repo",
+      "status": "🔍 Cloning and analysing remote Git repository…"
+    },
+
+    "statusPoll_200_step3": {
+      "_scenario": "GET /api/documentation/status/{jobId} — Step 3: AI analysis",
+      "status": "🤖 Analysing and generating TechnicalDocumentation (this may take a moment)…"
+    },
+
+    "statusPoll_200_step4": {
+      "_scenario": "GET /api/documentation/status/{jobId} — Step 4: building PDF",
+      "status": "📄 Building PDF document…"
+    },
+
+    "statusPoll_204": {
+      "_scenario": "GET /api/documentation/status/{jobId} — job completed or unknown (204 No Content)",
+      "status": null
+    }
+  },
+
+  "validationCases": {
+    "_description": "Input combinations for UI and service-level validation testing",
+
+    "sourceType_valid_values": ["JiraOnly", "GitOnly", "Both"],
+    "sourceType_invalid_values": ["", null, "jiraonly", "JIRA", "git", "all", 0],
+
+    "documentationType_valid_values": [
+      "TechnicalDocumentation",
+      "UserGuide",
+      "ApiDocumentation",
+      "ArchitectureOverview",
+      "FullDocumentation"
+    ],
+    "documentationType_invalid_values": ["", null, "technical", "full", 1],
+
+    "jiraTicketId_valid_formats": ["SF-101", "PROJ-1", "SHOPFLOW-9999", "AB-12345"],
+    "jiraTicketId_invalid_formats": ["sf-101", "101", "SF101", "SF-", "-101", "", "SF -101", "SF_101"],
+
+    "gitRepositoryUrl_valid": [
+      "https://github.com/sumedh2026/DocuGenious.git",
+      "https://github.com/sumedh2026/DocuGenious",
+      "https://github.com/sumedh2026/DocuGenious/tree/feature/api-integration-libraries"
+    ],
+    "gitRepositoryUrl_invalid": [
+      "",
+      null,
+      "not-a-url",
+      "ftp://github.com/repo.git",
+      "github.com/sumedh2026/DocuGenious"
+    ],
+
+    "outputFileName_boundary": {
+      "empty": "",
+      "normal": "MyDocument",
+      "withExtension": "MyDocument.pdf",
+      "withSpaces": "My Document Report",
+      "maxLength_255chars": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "pathTraversal": "../../../etc/passwd",
+      "specialChars": "Doc<>:\"/\\|?*Report"
+    }
+  }
+}

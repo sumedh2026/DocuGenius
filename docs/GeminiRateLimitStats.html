@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DocuGenious – Gemini API Rate Limit Statistics</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --primary:  #1E3A5F;
+    --accent:   #2E86AB;
+    --green:    #1A9E5C;
+    --orange:   #D97706;
+    --red:      #DC2626;
+    --purple:   #7C3AED;
+    --bg:       #F0F4F9;
+    --white:    #FFFFFF;
+    --gray:     #4B5563;
+    --border:   #D1D9E6;
+    --code-bg:  #1E1E2E;
+    --code-fg:  #CDD6F4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--primary);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Page wrapper ── */
+  .page { max-width: 1060px; margin: 0 auto; padding: 36px 24px 60px; }
+
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, var(--primary) 0%, #2A5080 100%);
+    border-radius: 14px;
+    padding: 36px 40px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    right: -40px; top: -40px;
+    width: 220px; height: 220px;
+    background: rgba(46,134,171,0.18);
+    border-radius: 50%;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(46,134,171,0.35);
+    color: #93C5FD;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 20px;
+    letter-spacing: 0.8px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .hero h1 {
+    font-size: 28px;
+    font-weight: 800;
+    color: #FFFFFF;
+    margin-bottom: 6px;
+  }
+  .hero p {
+    font-size: 14px;
+    color: #93BFDA;
+    max-width: 580px;
+  }
+  .hero-meta {
+    margin-top: 20px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .hero-tag {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #B0D4EA;
+  }
+  .hero-tag span { font-size: 15px; }
+
+  /* ── Section title ── */
+  .section-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--primary);
+    margin: 32px 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+    opacity: 0.3;
+  }
+
+  /* ── Cards ── */
+  .card-grid {
+    display: grid;
+    gap: 16px;
+  }
+  .card-grid.col-3 { grid-template-columns: repeat(3, 1fr); }
+  .card-grid.col-2 { grid-template-columns: repeat(2, 1fr); }
+  .card-grid.col-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .card {
+    background: var(--white);
+    border-radius: 10px;
+    padding: 20px 22px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card.accent-top  { border-top: 3px solid var(--accent); }
+  .card.green-top   { border-top: 3px solid var(--green); }
+  .card.orange-top  { border-top: 3px solid var(--orange); }
+  .card.red-top     { border-top: 3px solid var(--red); }
+  .card.purple-top  { border-top: 3px solid var(--purple); }
+  .card.primary-top { border-top: 3px solid var(--primary); }
+
+  .card-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #8A9BB0;
+    margin-bottom: 6px;
+  }
+  .card-value {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+  .card-value.accent  { color: var(--accent); }
+  .card-value.green   { color: var(--green); }
+  .card-value.orange  { color: var(--orange); }
+  .card-value.purple  { color: var(--purple); }
+  .card-value.primary { color: var(--primary); }
+  .card-sub {
+    font-size: 11.5px;
+    color: var(--gray);
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+
+  /* ── Info block ── */
+  .info-block {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin-bottom: 16px;
+  }
+  .info-block h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── Table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead tr {
+    background: var(--primary);
+  }
+  thead th {
+    padding: 10px 14px;
+    color: white;
+    font-weight: 700;
+    text-align: left;
+    font-size: 11.5px;
+    letter-spacing: 0.3px;
+  }
+  tbody tr:nth-child(even) { background: #F7FAFD; }
+  tbody tr:hover { background: #EEF4FB; }
+  tbody td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--gray);
+    vertical-align: top;
+  }
+  tbody td:first-child { font-weight: 600; color: var(--primary); }
+  .tag {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .tag-green  { background: #D1FAE5; color: #065F46; }
+  .tag-blue   { background: #DBEAFE; color: #1E40AF; }
+  .tag-orange { background: #FEF3C7; color: #92400E; }
+  .tag-red    { background: #FEE2E2; color: #991B1B; }
+  .tag-purple { background: #EDE9FE; color: #5B21B6; }
+
+  /* ── Token flow ── */
+  .token-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .tf-step {
+    flex: 1;
+    padding: 16px 18px;
+    border-right: 1px solid var(--border);
+  }
+  .tf-step:last-child { border-right: none; }
+  .tf-step-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8A9BB0;
+    margin-bottom: 4px;
+  }
+  .tf-step-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--primary);
+  }
+  .tf-step-desc {
+    font-size: 11px;
+    color: var(--gray);
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+  .tf-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: 700;
+    background: #F0F8FC;
+    border-right: 1px solid var(--border);
+  }
+
+  /* ── Retry timeline ── */
+  .retry-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .rt-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border);
+  }
+  .rt-row:last-child { border-bottom: none; }
+  .rt-num {
+    width: 44px;
+    background: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 800;
+    color: white;
+    flex-shrink: 0;
+  }
+  .rt-num.accent-bg { background: var(--accent); }
+  .rt-num.green-bg  { background: var(--green); }
+  .rt-num.red-bg    { background: var(--red); }
+  .rt-body {
+    flex: 1;
+    padding: 11px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .rt-desc { font-size: 13px; color: var(--gray); }
+  .rt-desc strong { color: var(--primary); }
+  .rt-timing {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+    margin-left: 12px;
+  }
+
+  /* ── Code pill ── */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: #EEF2FF;
+    color: var(--primary);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  /* ── Alert ── */
+  .alert {
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .alert.blue  { background: #EFF6FF; border-left: 4px solid var(--accent); }
+  .alert.green { background: #F0FDF4; border-left: 4px solid var(--green); }
+  .alert.amber { background: #FFFBEB; border-left: 4px solid var(--orange); }
+  .alert strong { color: var(--primary); }
+
+  /* ── Progress bar ── */
+  .quota-bar-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .qb-item {}
+  .qb-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .qb-label { font-weight: 600; color: var(--primary); }
+  .qb-pct   { font-weight: 700; color: var(--accent); }
+  .qb-track {
+    height: 10px;
+    background: #E2EAF4;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .qb-fill {
+    height: 100%;
+    border-radius: 5px;
+    background: var(--accent);
+  }
+  .qb-fill.green  { background: var(--green); }
+  .qb-fill.orange { background: var(--orange); }
+  .qb-note { font-size: 11px; color: var(--gray); margin-top: 3px; }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #8A9BB0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── HERO ── -->
+  <div class="hero">
+    <div class="hero-badge">📊 API Statistics Reference</div>
+    <h1>Gemini AI — Rate Limit &amp; Token Statistics</h1>
+    <p>Detailed token usage estimates, quota consumption, and retry behaviour for every DocuGenious generation scenario.</p>
+    <div class="hero-meta">
+      <div class="hero-tag"><span>🤖</span> Model: gemini-2.5-flash</div>
+      <div class="hero-tag"><span>💳</span> Tier: 1 (Pay-as-you-go)</div>
+      <div class="hero-tag"><span>📤</span> Max Output: 16,384 tokens</div>
+      <div class="hero-tag"><span>📥</span> Context Window: 1,048,576 tokens</div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 1 — TIER 1 RATE LIMITS
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">⚡ Tier 1 Rate Limits — gemini-2.5-flash</div>
+
+  <div class="card-grid col-4">
+    <div class="card accent-top">
+      <div class="card-label">Requests / Minute</div>
+      <div class="card-value accent">1,000</div>
+      <div class="card-sub">RPM hard cap across all concurrent users on your API key</div>
+    </div>
+    <div class="card green-top">
+      <div class="card-label">Tokens / Minute</div>
+      <div class="card-value green">4,000,000</div>
+      <div class="card-sub">Combined input + output tokens per minute (4M TPM)</div>
+    </div>
+    <div class="card orange-top">
+      <div class="card-label">Context Window</div>
+      <div class="card-value orange">1M</div>
+      <div class="card-sub">1,048,576 input tokens per single request — extremely generous</div>
+    </div>
+    <div class="card purple-top">
+      <div class="card-label">Daily Limit</div>
+      <div class="card-value purple">Unlimited</div>
+      <div class="card-sub">No daily cap on Tier 1 — usage billed per token consumed</div>
+    </div>
+  </div>
+
+  <div class="alert blue" style="margin-top:16px;">
+    <div class="alert-icon">ℹ️</div>
+    <div>
+      <strong>Free Tier vs Tier 1:</strong> On the free tier, gemini-2.5-flash is limited to
+      <strong>15 RPM</strong> and <strong>1,000,000 TPM</strong>. The 429 errors encountered during
+      initial testing were caused by exceeding the free-tier limit. Upgrading to
+      <strong>Tier 1 (pay-as-you-go)</strong> raises both caps dramatically and adds automatic per-minute bucket refill.
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 2 — TOKEN USAGE PER SCENARIO
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">🧮 Token Usage Estimates — Per Generation</div>
+
+  <p style="color:var(--gray);font-size:13px;margin-bottom:18px;">
+    Token estimation formula used by DocuGenious: <code>(systemPrompt.Length + userPrompt.Length) / 4</code>.
+    All truncation limits below come directly from the code in <code>GeminiService.cs</code>.
+  </p>
+
+  <!-- JIRA Ticket -->
+  <div class="info-block">
+    <h3>📋 Scenario A — 1 JIRA Ticket Analysis</h3>
+
+    <div class="token-flow" style="margin-bottom:14px;">
+      <div class="tf-step">
+        <div class="tf-step-label">System Prompt</div>
+        <div class="tf-step-value">~875</div>
+        <div class="tf-step-desc">JSON schema + generation instructions (~3,500 chars ÷ 4)</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Ticket Summary + Key</div>
+        <div class="tf-step-value">~50</div>
+        <div class="tf-step-desc">~200 chars of metadata</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Description</div>
+        <div class="tf-step-value">~500</div>
+        <div class="tf-step-desc">Capped at <code>2,000 chars</code> in code</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Acceptance Criteria</div>
+        <div class="tf-step-value">~375</div>
+        <div class="tf-step-desc">Up to 10 items × <code>300 chars</code> each</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Comments</div>
+        <div class="tf-step-value">~375</div>
+        <div class="tf-step-desc">Up to 5 comments × <code>300 chars</code> each</div>
+      </div>
+      <div class="tf-arrow">=</div>
+      <div class="tf-step" style="background:#EFF6FF;">
+        <div class="tf-step-label">Total Input</div>
+        <div class="tf-step-value" style="color:var(--accent);">~2,175</div>
+        <div class="tf-step-desc">tokens sent to Gemini</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Token Component</th>
+          <th>Characters (max)</th>
+          <th>Estimated Tokens</th>
+          <th>Source (code limit)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>System Prompt (instructions + schema)</td>
+          <td>~3,500</td>
+          <td>~875</td>
+          <td>Fixed — built in <code>GetSystemPrompt()</code></td>
+        </tr>
+        <tr>
+          <td>Ticket summary, key, status, type</td>
+          <td>~200</td>
+          <td>~50</td>
+          <td>As-is from JIRA</td>
+        </tr>
+        <tr>
+          <td>Description</td>
+          <td>2,000</td>
+          <td>~500</td>
+          <td><code>Truncate(t.Description, 2000)</code></td>
+        </tr>
+        <tr>
+          <td>Acceptance Criteria (10 items max)</td>
+          <td>3,000</td>
+          <td>~750</td>
+          <td><code>.Take(10) × Truncate(ac, 300)</code></td>
+        </tr>
+        <tr>
+          <td>Comments (5 items max)</td>
+          <td>1,500</td>
+          <td>~375</td>
+          <td><code>.Take(5) × Truncate(c.Body, 300)</code></td>
+        </tr>
+        <tr>
+          <td>User prompt wrapper text</td>
+          <td>~500</td>
+          <td>~125</td>
+          <td><code>BuildUserPrompt()</code> overhead</td>
+        </tr>
+        <tr style="background:#EFF6FF; font-weight:600;">
+          <td>✅ Total Input (typical)</td>
+          <td>~8,700</td>
+          <td><strong>~2,000 – 2,500</strong></td>
+          <td></td>
+        </tr>
+        <tr style="background:#F0FDF4;">
+          <td>✅ Output (AI-generated document)</td>
+          <td>—</td>
+          <td><strong>6,000 – 10,000</strong></td>
+          <td><code>MaxOutputTokens = 16,384</code></td>
+        </tr>
+        <tr style="background:#F5F3FF; font-weight:700;">
+          <td>🔢 Total Per Request</td>
+          <td>—</td>
+          <td><strong>~8,000 – 12,500</strong></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Git Repo -->
+  <div class="info-block">
+    <h3>🗂️ Scenario B — Small Git Repository (4–5 Files)</h3>
+
+    <div class="token-flow" style="margin-bottom:14px;">
+      <div class="tf-step">
+        <div class="tf-step-label">System Prompt</div>
+        <div class="tf-step-value">~875</div>
+        <div class="tf-step-desc">Same JSON schema + instructions</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Repo Metadata</div>
+        <div class="tf-step-value">~50</div>
+        <div class="tf-step-desc">URL, branch, file tree</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Recent Commits</div>
+        <div class="tf-step-value">~1,000</div>
+        <div class="tf-step-desc">Up to 20 commits × <code>200 chars</code></div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">File Contents</div>
+        <div class="tf-step-value">~2,500</div>
+        <div class="tf-step-desc">5 files × <code>2,000 chars</code> max each</div>
+      </div>
+      <div class="tf-arrow">+</div>
+      <div class="tf-step">
+        <div class="tf-step-label">Prompt Overhead</div>
+        <div class="tf-step-value">~125</div>
+        <div class="tf-step-desc"><code>BuildUserPrompt()</code> wrapper</div>
+      </div>
+      <div class="tf-arrow">=</div>
+      <div class="tf-step" style="background:#EFF6FF;">
+        <div class="tf-step-label">Total Input</div>
+        <div class="tf-step-value" style="color:var(--accent);">~4,550</div>
+        <div class="tf-step-desc">tokens sent to Gemini</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Token Component</th>
+          <th>Characters (max)</th>
+          <th>Estimated Tokens</th>
+          <th>Source (code limit)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>System Prompt (instructions + schema)</td>
+          <td>~3,500</td>
+          <td>~875</td>
+          <td>Fixed</td>
+        </tr>
+        <tr>
+          <td>Repo URL, branch, file tree listing</td>
+          <td>~200</td>
+          <td>~50</td>
+          <td>As-is from LibGit2Sharp</td>
+        </tr>
+        <tr>
+          <td>Recent commits (20 max)</td>
+          <td>4,000</td>
+          <td>~1,000</td>
+          <td><code>.Take(20) × Truncate(msg, 200)</code></td>
+        </tr>
+        <tr>
+          <td>File contents (5 files × 2,000 chars)</td>
+          <td>10,000</td>
+          <td>~2,500</td>
+          <td><code>.Take(20) × Truncate(content, 2000)</code></td>
+        </tr>
+        <tr>
+          <td>User prompt wrapper text</td>
+          <td>~500</td>
+          <td>~125</td>
+          <td><code>BuildUserPrompt()</code> overhead</td>
+        </tr>
+        <tr style="background:#EFF6FF; font-weight:600;">
+          <td>✅ Total Input (typical)</td>
+          <td>~18,200</td>
+          <td><strong>~4,000 – 5,500</strong></td>
+          <td></td>
+        </tr>
+        <tr style="background:#F0FDF4;">
+          <td>✅ Output (AI-generated document)</td>
+          <td>—</td>
+          <td><strong>8,000 – 12,000</strong></td>
+          <td><code>MaxOutputTokens = 16,384</code></td>
+        </tr>
+        <tr style="background:#F5F3FF; font-weight:700;">
+          <td>🔢 Total Per Request</td>
+          <td>—</td>
+          <td><strong>~12,000 – 17,500</strong></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="alert green">
+    <div class="alert-icon">✅</div>
+    <div>
+      <strong>Safety ceiling:</strong> <code>TruncateIfNeeded()</code> in the code hard-caps any prompt at
+      <strong>80,000 characters (~20,000 tokens)</strong> before it is sent to Gemini.
+      This means even a large combined JIRA + Git request will never exceed 20,000 input tokens —
+      well within the 1,048,576-token context window.
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 3 — QUOTA CONSUMPTION
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">📉 Quota Consumption per Request (Tier 1)</div>
+
+  <div class="card-grid col-2" style="margin-bottom:20px;">
+    <div class="card accent-top">
+      <div class="card-label">JIRA Ticket — % of TPM Used</div>
+      <div class="card-value accent">0.31%</div>
+      <div class="card-sub">~12,500 tokens used out of 4,000,000 TPM quota per minute</div>
+    </div>
+    <div class="card green-top">
+      <div class="card-label">Git Repo (4–5 files) — % of TPM Used</div>
+      <div class="card-value green">0.44%</div>
+      <div class="card-sub">~17,500 tokens used out of 4,000,000 TPM quota per minute</div>
+    </div>
+  </div>
+
+  <div class="info-block">
+    <h3>📊 How Many Generations Fit Within 1 Minute of Quota?</h3>
+    <div class="quota-bar-row">
+
+      <div class="qb-item">
+        <div class="qb-header">
+          <span class="qb-label">📋 JIRA Tickets — max simultaneous/minute</span>
+          <span class="qb-pct">~320 requests/min (token-limited)</span>
+        </div>
+        <div class="qb-track"><div class="qb-fill" style="width:32%;"></div></div>
+        <div class="qb-note">4,000,000 ÷ 12,500 tokens = 320. RPM limit (1,000) is not the constraint here — token budget is.</div>
+      </div>
+
+      <div class="qb-item">
+        <div class="qb-header">
+          <span class="qb-label">🗂️ Git Repositories — max simultaneous/minute</span>
+          <span class="qb-pct">~228 requests/min (token-limited)</span>
+        </div>
+        <div class="qb-track"><div class="qb-fill green" style="width:22.8%;"></div></div>
+        <div class="qb-note">4,000,000 ÷ 17,500 tokens = 228. Again, token quota is the binding constraint, not RPM.</div>
+      </div>
+
+      <div class="qb-item">
+        <div class="qb-header">
+          <span class="qb-label">👤 Single user (DocuGenious normal usage)</span>
+          <span class="qb-pct">&lt; 0.5% quota used</span>
+        </div>
+        <div class="qb-track"><div class="qb-fill orange" style="width:0.5%;"></div></div>
+        <div class="qb-note">A single generation consumes less than half a percent of the per-minute quota. No rate limiting expected for normal use.</div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 4 — RETRY POLICY
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">🔁 Auto-Retry Policy (Built into GeminiService.cs)</div>
+
+  <div class="card-grid col-2" style="margin-bottom:16px;">
+    <div class="card primary-top">
+      <div class="card-label">HTTP 429 — Rate Limit Retries</div>
+      <div class="card-value primary">3</div>
+      <div class="card-sub">DocuGenious will automatically retry up to <strong>3 times</strong> before showing an error. Controlled by <code>MaxRateLimitRetries = 3</code>.</div>
+    </div>
+    <div class="card orange-top">
+      <div class="card-label">HTTP 5xx — Server Error Retries</div>
+      <div class="card-value orange">3</div>
+      <div class="card-sub">Up to 3 retries for Gemini server errors with increasing backoff delays: <strong>1.5s → 4s → 9s</strong>.</div>
+    </div>
+  </div>
+
+  <div class="retry-timeline">
+    <div class="rt-row">
+      <div class="rt-num">0</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Initial request sent</strong> — DocuGenious calls Gemini API with full prompt</div>
+        <div class="rt-timing">t = 0 s</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num accent-bg">429</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Rate limit hit</strong> — Gemini returns HTTP 429. Response JSON body contains <code>"retryDelay": "Xs"</code> field. DocuGenious reads this delay value via <code>ExtractRetryDelay()</code>.</div>
+        <div class="rt-timing">Gemini recommends: 4–10 s</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num">R1</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Auto-retry #1</strong> — Waits <code>retryDelay + 1s buffer</code> (default: 5s if no delay in response), then resends the same request automatically.</div>
+        <div class="rt-timing">Wait: ~5–11 s</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num">R2</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Auto-retry #2</strong> — Another 429? Waits again and retries a second time without any user intervention.</div>
+        <div class="rt-timing">Wait: ~5–11 s</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num">R3</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Auto-retry #3</strong> — Final automatic retry attempt. This covers transient quota bursts even on Tier 1.</div>
+        <div class="rt-timing">Wait: ~5–11 s</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num red-bg">ERR</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Hard failure</strong> — Only if all 3 retries fail. User sees: <em>"Gemini quota exceeded… Please wait ~X seconds and try again."</em> This should not occur under normal Tier 1 usage.</div>
+        <div class="rt-timing">After ~18–35 s total</div>
+      </div>
+    </div>
+    <div class="rt-row">
+      <div class="rt-num green-bg">✓</div>
+      <div class="rt-body">
+        <div class="rt-desc"><strong>Success path</strong> — Any retry that succeeds continues normally into JSON parsing, PDF generation, and download. The user sees the spinner the entire time with no manual action needed.</div>
+        <div class="rt-timing">Transparent to user</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 5 — COST ESTIMATE
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">💰 Approximate Cost per Generation (Tier 1)</div>
+
+  <div class="alert amber">
+    <div class="alert-icon">⚠️</div>
+    <div>
+      Pricing based on <strong>gemini-2.5-flash Tier 1</strong>:
+      Input <strong>$0.075 / 1M tokens</strong> (prompts ≤ 200K tokens) ·
+      Output <strong>$0.30 / 1M tokens</strong>.
+      Actual billing may vary — verify at
+      <a href="https://ai.google.dev/pricing" target="_blank" style="color:var(--accent);">ai.google.dev/pricing</a>.
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Scenario</th>
+        <th>Input Tokens</th>
+        <th>Output Tokens</th>
+        <th>Input Cost</th>
+        <th>Output Cost</th>
+        <th>Total Cost / Request</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>📋 1 JIRA Ticket</td>
+        <td>~2,500</td>
+        <td>~8,000</td>
+        <td>$0.000188</td>
+        <td>$0.002400</td>
+        <td><span class="tag tag-green">~$0.0026</span></td>
+      </tr>
+      <tr>
+        <td>🗂️ Small Git Repo (4–5 files)</td>
+        <td>~5,000</td>
+        <td>~10,000</td>
+        <td>$0.000375</td>
+        <td>$0.003000</td>
+        <td><span class="tag tag-blue">~$0.0034</span></td>
+      </tr>
+      <tr>
+        <td>🔗 Combined JIRA + Git</td>
+        <td>~7,000</td>
+        <td>~12,000</td>
+        <td>$0.000525</td>
+        <td>$0.003600</td>
+        <td><span class="tag tag-orange">~$0.0041</span></td>
+      </tr>
+      <tr>
+        <td>📦 100 Generations / Month</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+        <td><span class="tag tag-purple">~$0.26 – $0.41</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert green" style="margin-top:16px;">
+    <div class="alert-icon">💡</div>
+    <div>
+      <strong>Cost in perspective:</strong> Generating 100 documents per month costs approximately
+      <strong>$0.26 – $0.41 USD</strong>. A team doing 500 generations/month would spend roughly
+      <strong>$1.30 – $2.05 USD</strong> — a fraction of one developer-hour saved.
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 6 — QUICK COMPARISON TABLE
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">📋 Free Tier vs Tier 1 — Side by Side</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Limit</th>
+        <th>Free Tier</th>
+        <th>Tier 1 (Pay-as-you-go)</th>
+        <th>Impact on DocuGenious</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Requests / Minute (RPM)</td>
+        <td><span class="tag tag-red">15 RPM</span></td>
+        <td><span class="tag tag-green">1,000 RPM</span></td>
+        <td>Free tier breaks after 15 rapid test runs; Tier 1 is never the bottleneck</td>
+      </tr>
+      <tr>
+        <td>Tokens / Minute (TPM)</td>
+        <td><span class="tag tag-orange">1,000,000 TPM</span></td>
+        <td><span class="tag tag-green">4,000,000 TPM</span></td>
+        <td>Free tier supports ~80 JIRA or ~57 Git requests/min; Tier 1 is 4× higher</td>
+      </tr>
+      <tr>
+        <td>Daily Request Limit</td>
+        <td><span class="tag tag-red">1,500 / day</span></td>
+        <td><span class="tag tag-green">Unlimited</span></td>
+        <td>Free tier caps production use; Tier 1 scales without restriction</td>
+      </tr>
+      <tr>
+        <td>Context Window</td>
+        <td><span class="tag tag-blue">1,048,576</span></td>
+        <td><span class="tag tag-blue">1,048,576</span></td>
+        <td>Same on both tiers — 1M tokens, vastly larger than any DocuGenious prompt</td>
+      </tr>
+      <tr>
+        <td>Max Output Tokens</td>
+        <td><span class="tag tag-blue">65,536</span></td>
+        <td><span class="tag tag-blue">65,536</span></td>
+        <td>DocuGenious configured to 16,384 — well within both tiers</td>
+      </tr>
+      <tr>
+        <td>Billing</td>
+        <td><span class="tag tag-green">Free</span></td>
+        <td><span class="tag tag-orange">~$0.003 / request</span></td>
+        <td>Cost per generation is negligible vs. developer time saved</td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <!-- ══════════════════════════════════════════════
+       SECTION 7 — PARSING 1 MB OF CODE
+  ══════════════════════════════════════════════ -->
+  <div class="section-title">📦 What Does It Take to Parse 1 MB of Code?</div>
+
+  <p style="color:var(--gray);font-size:13px;margin-bottom:18px;">
+    1 MB of source code = <strong>1,048,576 characters</strong>. Here is exactly what happens at every layer —
+    from raw bytes down to what actually reaches Gemini — based on DocuGenious's real truncation logic.
+  </p>
+
+  <!-- Raw numbers -->
+  <div class="card-grid col-4" style="margin-bottom:20px;">
+    <div class="card primary-top">
+      <div class="card-label">Raw Size</div>
+      <div class="card-value primary">1 MB</div>
+      <div class="card-sub">1,048,576 characters of source code</div>
+    </div>
+    <div class="card orange-top">
+      <div class="card-label">Raw Token Count</div>
+      <div class="card-value orange">~262,144</div>
+      <div class="card-sub">1,048,576 chars ÷ 4 chars-per-token (industry standard estimate)</div>
+    </div>
+    <div class="card accent-top">
+      <div class="card-label">Gemini Context Window</div>
+      <div class="card-value accent">1,048,576</div>
+      <div class="card-sub">Tokens max per request — 1 MB of code fits but uses 25% of the window</div>
+    </div>
+    <div class="card green-top">
+      <div class="card-label">DocuGenious Actual Send</div>
+      <div class="card-value green">~20,000</div>
+      <div class="card-sub">Tokens after all truncation layers — only 7.6% of the raw 1 MB</div>
+    </div>
+  </div>
+
+  <!-- Truncation funnel -->
+  <div class="info-block" style="margin-bottom:16px;">
+    <h3>🔽 Truncation Funnel — How DocuGenious Reduces 1 MB to ~20,000 Tokens</h3>
+    <p style="font-size:12.5px;color:var(--gray);margin-bottom:16px;">
+      DocuGenious applies three progressive truncation layers before sending anything to Gemini.
+      Each layer is sourced directly from <code>GeminiService.cs</code>.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+
+      <!-- Layer 1 -->
+      <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);">
+        <div style="width:44px;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:white;flex-shrink:0;">L1</div>
+        <div style="flex:1;padding:14px 20px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px;">Per-File Content Limit</div>
+              <div style="font-size:12.5px;color:var(--gray);">
+                Each source file is truncated to <code>2,000 characters</code> regardless of actual file size.
+                A 50 KB file and a 5 KB file both contribute the same 2,000 chars to the prompt.
+                This means a 1 MB file is cut to 2,000 chars — <strong>a 99.8% reduction</strong>.
+              </div>
+              <div style="font-size:11.5px;color:#8A9BB0;margin-top:5px;">Code: <code>Truncate(f.Content!, 2000)</code> in <code>BuildGitContext()</code></div>
+            </div>
+            <div style="text-align:right;white-space:nowrap;">
+              <div style="font-size:11px;color:#8A9BB0;">Input</div>
+              <div style="font-size:16px;font-weight:800;color:var(--red);">1,048,576 chars</div>
+              <div style="font-size:18px;color:var(--accent);font-weight:700;">↓</div>
+              <div style="font-size:16px;font-weight:800;color:var(--green);">2,000 chars / file</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Layer 2 -->
+      <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);">
+        <div style="width:44px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:white;flex-shrink:0;">L2</div>
+        <div style="flex:1;padding:14px 20px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px;">Maximum Files Processed</div>
+              <div style="font-size:12.5px;color:var(--gray);">
+                Even if the repository contains hundreds of files, DocuGenious only processes
+                the first <strong>20 files</strong>. Combined with Layer 1:
+                maximum file content = <strong>20 × 2,000 = 40,000 chars ≈ 10,000 tokens</strong>.
+                A 1 MB repo spread across 100 files would have 80 files completely ignored.
+              </div>
+              <div style="font-size:11.5px;color:#8A9BB0;margin-top:5px;">Code: <code>repo.Files.Where(x => x.Content != null).Take(20)</code></div>
+            </div>
+            <div style="text-align:right;white-space:nowrap;">
+              <div style="font-size:11px;color:#8A9BB0;">Max files</div>
+              <div style="font-size:16px;font-weight:800;color:var(--orange);">Unlimited</div>
+              <div style="font-size:18px;color:var(--accent);font-weight:700;">↓</div>
+              <div style="font-size:16px;font-weight:800;color:var(--green);">20 files max</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Layer 3 -->
+      <div style="display:flex;align-items:stretch;">
+        <div style="width:44px;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:white;flex-shrink:0;">L3</div>
+        <div style="flex:1;padding:14px 20px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px;">Overall Prompt Hard Cap</div>
+              <div style="font-size:12.5px;color:var(--gray);">
+                The complete assembled prompt (system + user + all file contents + metadata) is capped at
+                <strong>80,000 characters (~20,000 tokens)</strong> as a final safety net.
+                This covers cases where many small files together approach the limit, or combined JIRA + Git scenarios.
+                If the prompt exceeds 80K chars, it is cut with a <code>[Source data truncated]</code> notice appended.
+              </div>
+              <div style="font-size:11.5px;color:#8A9BB0;margin-top:5px;">Code: <code>TruncateIfNeeded(prompt) → prompt.Length > 80_000 ? prompt[..80_000] + "..." : prompt</code></div>
+            </div>
+            <div style="text-align:right;white-space:nowrap;">
+              <div style="font-size:11px;color:#8A9BB0;">Max prompt</div>
+              <div style="font-size:16px;font-weight:800;color:var(--orange);">Unlimited</div>
+              <div style="font-size:18px;color:var(--accent);font-weight:700;">↓</div>
+              <div style="font-size:16px;font-weight:800;color:var(--green);">80,000 chars</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- What if sent raw -->
+  <div class="info-block" style="margin-bottom:16px;">
+    <h3>📐 If 1 MB Were Sent Raw to Gemini (No Truncation)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>1 MB Raw (Hypothetical)</th>
+          <th>DocuGenious Actual</th>
+          <th>Difference</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Characters sent</td>
+          <td>1,048,576</td>
+          <td>~44,000 (files + metadata + prompt)</td>
+          <td><span class="tag tag-green">96% smaller</span></td>
+        </tr>
+        <tr>
+          <td>Input tokens</td>
+          <td>~262,144</td>
+          <td>~4,500 – 5,500</td>
+          <td><span class="tag tag-green">~98% fewer</span></td>
+        </tr>
+        <tr>
+          <td>% of 1M context window used</td>
+          <td><span class="tag tag-red">25%</span></td>
+          <td><span class="tag tag-green">0.5%</span></td>
+          <td>50× more efficient</td>
+        </tr>
+        <tr>
+          <td>Input cost (Tier 1)</td>
+          <td><span class="tag tag-orange">~$0.0197</span></td>
+          <td><span class="tag tag-green">~$0.0004</span></td>
+          <td>~49× cheaper input</td>
+        </tr>
+        <tr>
+          <td>Estimated processing time</td>
+          <td><span class="tag tag-orange">~3–6 min</span></td>
+          <td><span class="tag tag-green">~60–90 sec</span></td>
+          <td>3–4× faster</td>
+        </tr>
+        <tr>
+          <td>Risk of timeout (300s limit)</td>
+          <td><span class="tag tag-red">High</span></td>
+          <td><span class="tag tag-green">Low</span></td>
+          <td>DocuGenious configured at 300 s</td>
+        </tr>
+        <tr>
+          <td>Fits in context window?</td>
+          <td><span class="tag tag-blue">Yes (262K &lt; 1M)</span></td>
+          <td><span class="tag tag-green">Yes (easily)</span></td>
+          <td>Both fit, but raw is wasteful</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Breakdown of files in 1 MB -->
+  <div class="info-block" style="margin-bottom:16px;">
+    <h3>🗃️ Typical 1 MB Repository — File Breakdown &amp; What DocuGenious Captures</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Typical File in 1 MB Repo</th>
+          <th>Actual File Size</th>
+          <th>Chars Sent to Gemini</th>
+          <th>Tokens Contributed</th>
+          <th>Coverage</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Program.cs / startup</td>
+          <td>~3 KB</td>
+          <td>2,000 chars</td>
+          <td>~500</td>
+          <td><span class="tag tag-orange">~65% of file</span></td>
+        </tr>
+        <tr>
+          <td>Controller (e.g. 150 lines)</td>
+          <td>~5 KB</td>
+          <td>2,000 chars</td>
+          <td>~500</td>
+          <td><span class="tag tag-orange">~40% of file</span></td>
+        </tr>
+        <tr>
+          <td>Service class (e.g. 300 lines)</td>
+          <td>~12 KB</td>
+          <td>2,000 chars</td>
+          <td>~500</td>
+          <td><span class="tag tag-red">~17% of file</span></td>
+        </tr>
+        <tr>
+          <td>Small utility / model class</td>
+          <td>~1 KB</td>
+          <td>1,024 chars (full)</td>
+          <td>~256</td>
+          <td><span class="tag tag-green">100% of file</span></td>
+        </tr>
+        <tr>
+          <td>Large service (e.g. 1,000 lines)</td>
+          <td>~40 KB</td>
+          <td>2,000 chars</td>
+          <td>~500</td>
+          <td><span class="tag tag-red">~5% of file</span></td>
+        </tr>
+        <tr>
+          <td>Files #21 and beyond</td>
+          <td>Any size</td>
+          <td><strong>0 chars</strong></td>
+          <td>0</td>
+          <td><span class="tag tag-red">Not included</span></td>
+        </tr>
+        <tr style="background:#F0FDF4;font-weight:700;">
+          <td>✅ Total (20 files max)</td>
+          <td>Up to 1 MB</td>
+          <td><strong>≤ 40,000 chars</strong></td>
+          <td><strong>≤ 10,000</strong></td>
+          <td><span class="tag tag-green">Controlled</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Recommendation -->
+  <div class="alert amber" style="margin-bottom:10px;">
+    <div class="alert-icon">💡</div>
+    <div>
+      <strong>Best practice for large repos:</strong> For a 1 MB+ repository, DocuGenious prioritises the
+      <strong>first 20 files returned by LibGit2Sharp</strong> (typically ordered alphabetically or by directory walk).
+      To get the most relevant analysis, ensure key files like <code>Program.cs</code>, main service classes,
+      and controller files appear early in the directory structure (e.g. keep them in <code>/src</code> root
+      rather than deeply nested). Future improvement: priority-ranked file selection by file type.
+    </div>
+  </div>
+
+  <div class="alert blue">
+    <div class="alert-icon">📌</div>
+    <div>
+      <strong>Cost to parse 1 MB raw (if truncation were removed):</strong>
+      Input ~$0.0197 + Output ~$0.0049 = <strong>~$0.0246 per request</strong> (~8× more expensive than current DocuGenious approach).
+      The truncation strategy keeps costs under <strong>$0.0034</strong> regardless of repo size.
+    </div>
+  </div>
+
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>DocuGenious — Gemini API Rate Limit Statistics</span>
+    <span>Model: gemini-2.5-flash · Tier 1 · Generated April 2025</span>
+  </div>
+
+</div>
+</body>
+</html>
