@@ -77,8 +77,8 @@ public static class DocumentationTypes
     [
         new("TechnicalDocumentation", "Technical Documentation"),
         new("UserGuide",              "User Guide (non-technical)"),
-        new("ApiDocumentation",       "API Documentation"),
+        // new("ApiDocumentation",       "API Documentation"),        // disabled — not yet ready
         new("ArchitectureOverview",   "Architecture Overview"),
-        new("FullDocumentation",      "Full Documentation"),
+        // new("FullDocumentation",      "Full Documentation"),        // disabled — not yet ready
     ];
 }
